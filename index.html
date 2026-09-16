@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pitchside · Live Football Scores</title>
+  <meta name="description" content="Live football scores, fixtures, results, tables, line-ups and player stats from the Champions League, Premier League, LaLiga, Serie A, Bundesliga and more.">
+  <meta name="theme-color" content="#0a0e13">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='11' fill='%233ddc84'/><path d='m12 6 4.2 3.1-1.6 4.9H9.4L7.8 9.1z' fill='%23052b16'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar-in">
+      <a class="brand" href="#/" aria-label="Pitchside home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/><path d="m12 7.2 3.8 2.8-1.45 4.5h-4.7L8.2 10z"/>
+            <path d="M12 3.2v4M20.6 9.6 16 10.2M3.4 9.6 8 10.2M17.9 19.2 14.7 14.9M6.1 19.2l3.2-4.3"/>
+          </svg>
+        </span>
+        <span class="word">Pitch<em>side</em></span>
+      </a>
+
+      <nav class="nav" aria-label="Primary">
+        <a href="#/" data-nav="scores">Scores</a>
+        <a href="#/league/eng.1" data-nav="leagues">Leagues</a>
+      </nav>
+
+      <div class="search">
+        <span class="search-ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+        </span>
+        <input id="search" type="search" placeholder="Search a team…" autocomplete="off" aria-label="Search for a team">
+      </div>
+
+      <button class="live-pill" id="livePill" type="button" hidden>
+        <span class="dot" aria-hidden="true"></span><span id="liveCount">0</span> live
+      </button>
+    </div>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar" id="sidebar" aria-label="Competitions"></aside>
+    <main id="main" class="main" tabindex="-1"></main>
+    <aside class="rail" id="rail" aria-label="Highlights"></aside>
+  </div>
+
+  <footer class="foot">
+    <span id="tzNote"></span> · Scores refresh automatically every 30 seconds
+    <br>
+    Match data from ESPN public feeds. Player portraits and club descriptions from
+    <a href="https://en.wikipedia.org/" target="_blank" rel="noopener noreferrer">Wikipedia</a> /
+    <a href="https://commons.wikimedia.org/" target="_blank" rel="noopener noreferrer">Wikimedia Commons</a>,
+    available under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA</a>.
+    An independent project, not affiliated with ESPN or any club or competition.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
