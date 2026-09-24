@@ -950,6 +950,49 @@ h1.page-title { font-size: 26px; letter-spacing: -.025em; }
   .vrow .vval.rank { grid-column: 3; font-size: 11px; }
 }
 
+
+/* ---------- factor cards: the "why", at a glance ---------- */
+.factors { padding: 16px 18px 4px; }
+.fgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(146px, 1fr)); gap: 8px; }
+.fcard { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.fc-top { display: flex; align-items: center; gap: 7px; }
+.fc-ic { width: 16px; height: 16px; color: var(--text-3); flex: none; }
+.fc-ic svg { width: 16px; height: 16px; display: block; }
+.fc-label { font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--text-2); }
+.fc-vs { display: flex; flex-direction: column; gap: 4px; }
+.fc-side { display: flex; align-items: baseline; gap: 7px; padding: 3px 6px; border-radius: var(--r-xs); }
+.fc-side i { font-style: normal; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--text-3); width: 34px; flex: none; }
+.fc-side b { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.fc-side b em { font-style: normal; font-size: 11px; font-weight: 500; color: var(--text-3); }
+.fc-side.win { background: rgba(61, 220, 132, .10); }
+.fc-side.win i { color: var(--brand); }
+.fc-side.win b { color: var(--text); }
+.fc-tick { margin-left: auto; width: 13px; height: 13px; color: var(--brand); flex: none; }
+.fc-tick svg { width: 13px; height: 13px; display: block; }
+.fc-sub { font-size: 10.5px; color: var(--text-3); letter-spacing: .02em; }
+
+.fverdict { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-top: 10px; padding: 12px 14px; border-radius: var(--r); background: var(--brand-dim); box-shadow: inset 0 0 0 1px rgba(61,220,132,.22); }
+.fv-pick { font-size: 15px; font-weight: 700; }
+.fv-p { font-size: 15px; font-weight: 700; color: var(--brand); font-variant-numeric: tabular-nums; }
+.fv-xg { margin-left: auto; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* ---------- progressive disclosure ---------- */
+.more-detail { margin: 6px 0 0; border-top: 1px solid rgba(255,255,255,.055); }
+.more-detail summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 18px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-2); min-height: 48px; list-style: none; }
+.more-detail summary::-webkit-details-marker { display: none; }
+.more-detail summary:hover { color: var(--text); background: var(--surface-2); }
+.more-detail summary svg { width: 15px; height: 15px; transition: transform .2s var(--ease); }
+.more-detail[open] summary svg { transform: rotate(90deg); }
+.more-detail[open] summary { border-bottom: 1px solid rgba(255,255,255,.055); }
+.more-body { padding-bottom: 6px; }
+
+@media (max-width: 640px) {
+  .factors { padding: 14px 14px 4px; }
+  .fgrid { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 7px; }
+  .fverdict { margin-top: 9px; }
+  .fv-xg { margin-left: 0; width: 100%; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }

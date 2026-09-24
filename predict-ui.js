@@ -481,38 +481,67 @@
     </div>`;
   }
 
-  /* plain-English reasoning, generated from the same numbers shown above */
-  function narrative(ctx, pred, data) {
+  /* ---------------- factor cards ----------------
+     Replaces the paragraph explanation. Each card is one reason, readable at a
+     glance: icon, two-word label, both clubs' numbers, and the stronger side
+     marked with a tick as well as weight — never colour alone. */
+
+  const FIC = {
+    attack: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 7.4 3.6 2.6-1.4 4.3h-4.4L8.4 10z"/></svg>',
+    defence: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 5 6v5.5c0 4.2 3 8.1 7 9.5 4-1.4 7-5.3 7-9.5V6z"/></svg>',
+    home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>',
+    form: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 16 5-5 4 4 8-8"/><path d="M15 7h5v5"/></svg>',
+    goals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20V9l9-5 9 5v11"/><path d="M3 13h18M9 20V9M15 20V9"/></svg>',
+    tick: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 5 5L19 7"/></svg>',
+  };
+
+  function factorCards(ctx, pred, data) {
     const A = ps();
     const { hp, ap, ranks } = data;
+    if (!hp || !ap) return '';
     const hr = ranks[String(ctx.home.id)], ar = ranks[String(ctx.away.id)];
-    const bits = [];
-    const H = A.esc(ctx.home.name), Aw = A.esc(ctx.away.name);
+    const habb = ctx.home.abbr || ctx.home.name.slice(0, 3).toUpperCase();
+    const aabb = ctx.away.abbr || ctx.away.name.slice(0, 3).toUpperCase();
 
+    const cards = [];
     if (hr && ar) {
-      bits.push(`<b>${H}</b> rate <b>${ord(hr.attackRank)}</b> for attack and <b>${ord(hr.defenceRank)}</b> for defence of the ${hr.of} clubs modelled here; <b>${Aw}</b> rate ${ord(ar.attackRank)} and ${ord(ar.defenceRank)}.`);
+      cards.push({ ic: FIC.attack, label: 'Attack', sub: `of ${hr.of} clubs`,
+        h: ord(hr.attackRank), a: ord(ar.attackRank), hn: -hr.attackRank, an: -ar.attackRank });
+      cards.push({ ic: FIC.defence, label: 'Defence', sub: `of ${hr.of} clubs`,
+        h: ord(hr.defenceRank), a: ord(ar.defenceRank), hn: -hr.defenceRank, an: -ar.defenceRank });
     }
-    if (hp && ap && hp.home.played && ap.away.played) {
-      bits.push(`At home <b>${H}</b> average <b>${fmt2(hp.home.ppg)}</b> points and <b>${fmt2(hp.home.gfpg)}</b> goals a game (conceding ${fmt2(hp.home.gapg)}); on the road <b>${Aw}</b> average <b>${fmt2(ap.away.ppg)}</b> points and ${fmt2(ap.away.gfpg)} goals (conceding ${fmt2(ap.away.gapg)}).`);
-    }
-    if (hp && ap) {
-      const hf = `${hp.formPoints}/${hp.formMax}`, af = `${ap.formPoints}/${ap.formMax}`;
-      bits.push(`Recent form: <b>${H}</b> ${hf} points from their last ${hp.recent.length}, <b>${Aw}</b> ${af} from ${ap.recent.length}.`);
-    }
-    if (pred.strength) {
-      bits.push(`Home teams in this competition score <b>${fmt2(pred.strength.homeAdvantage)}×</b> as often as visitors, which is already priced in.`);
-    }
-    const absAll = (pred.homeAbsences || []).concat(pred.awayAbsences || []);
-    if (absAll.length) {
-      const hLoss = pred.availability ? Math.round(pred.availability.home.attackLoss * 100) : 0;
-      const aLoss = pred.availability ? Math.round(pred.availability.away.attackLoss * 100) : 0;
-      if (hLoss || aLoss) bits.push(`Absences trim ${hLoss ? `<b>${H}</b>'s attack by ${hLoss}%` : ''}${hLoss && aLoss ? ' and ' : ''}${aLoss ? `<b>${Aw}</b>'s by ${aLoss}%` : ''}.`);
-    }
+    cards.push({ ic: FIC.home, label: 'Home / away', sub: 'points a game',
+      h: fmt2(hp.home.ppg), a: fmt2(ap.away.ppg), hn: hp.home.ppg, an: ap.away.ppg });
+    cards.push({ ic: FIC.form, label: 'Form', sub: 'last 6 games',
+      h: `${hp.formPoints}<em>/${hp.formMax}</em>`, a: `${ap.formPoints}<em>/${ap.formMax}</em>`,
+      hn: hp.formPoints, an: ap.formPoints });
+    cards.push({ ic: FIC.goals, label: 'Scoring', sub: 'goals a game',
+      h: fmt2(hp.all.gfpg), a: fmt2(ap.all.gfpg), hn: hp.all.gfpg, an: ap.all.gfpg });
+
+    const side = (abbr, val, wins) => `<div class="fc-side${wins ? ' win' : ''}">
+        <i>${A.esc(abbr)}</i><b>${val}</b>${wins ? `<span class="fc-tick" aria-label="stronger">${FIC.tick}</span>` : ''}</div>`;
+
+    // one short line instead of five paragraphs
+    const wins = { h: 0, a: 0 };
+    cards.forEach(c => { if (c.hn > c.an) wins.h++; else if (c.an > c.hn) wins.a++; });
+    const lead = wins.h === wins.a ? null : (wins.h > wins.a ? ctx.home.name : ctx.away.name);
+    const leadCount = Math.max(wins.h, wins.a);
     const pick = P.pickOf({ home: pred.home, draw: pred.draw, away: pred.away });
-    const pickName = pick === 'draw' ? 'a draw' : pick === 'home' ? `a ${H} win` : `an ${Aw} win`;
-    bits.push(`Together that gives <b>${fmt2(pred.expectedHome)}</b> expected goals to <b>${fmt2(pred.expectedAway)}</b> — making ${pickName} the single most likely result at <b>${pct(pred[pick])}</b>, though ${pct(1 - pred[pick])} of the time it goes another way.`);
-    return bits.map(b => `<p>${b}</p>`).join('');
+    const pickName = pick === 'draw' ? 'Draw' : pick === 'home' ? ctx.home.name : ctx.away.name;
+
+    return `<div class="factors">
+      <div class="viz-head"><b>Why</b><span>${lead ? `${A.esc(lead)} lead ${leadCount} of ${cards.length}` : 'evenly matched'}</span></div>
+      <div class="fgrid">${cards.map(c => `<div class="fcard">
+        <div class="fc-top"><span class="fc-ic">${c.ic}</span><span class="fc-label">${c.label}</span></div>
+        <div class="fc-vs">${side(habb, c.h, c.hn > c.an)}${side(aabb, c.a, c.an > c.hn)}</div>
+        <span class="fc-sub">${c.sub}</span>
+      </div>`).join('')}</div>
+      <div class="fverdict"><span class="fv-pick">${A.esc(pickName)}</span>
+        <span class="fv-p">${pct(pred[pick])}</span>
+        <span class="fv-xg">${fmt2(pred.expectedHome)} – ${fmt2(pred.expectedAway)} goals</span></div>
+    </div>`;
   }
+
   const ord = n => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th'}`;
 
   /* ---------------- supporting data ---------------- */
@@ -658,13 +687,13 @@
           Shown as background only — it is not used in the prediction.</div>
       </div>` : '';
 
-    const factors = [];
-    if (pred.strength) factors.push(`Home advantage ×${fmt2(pred.strength.homeAdvantage)}`);
-    factors.push(`Fitted on ${pred.ratingMatches || 0} matches`);
-    if (pred.lowConfidence) factors.push('Thin history — low confidence');
+    const absBlock = (pred.homeAbsences && pred.homeAbsences.length) || (pred.awayAbsences && pred.awayAbsences.length)
+      ? `<div class="pred-abs"><div class="viz-head"><b>Missing players</b><span>factored into the numbers</span></div>
+          ${absenceChips(pred.homeAbsences, ctx.home.name)}${absenceChips(pred.awayAbsences, ctx.away.name)}</div>`
+      : '';
 
     return `<div class="card-title"><span class="label">${live ? 'Live prediction' : 'Prediction'}</span>
-        <span class="label">${live ? `recalculated at ${pred.minute}'` : 'model estimate · not advice'}</span></div>
+        <span class="label">${live ? `at ${pred.minute}'` : 'estimate, not advice'}</span></div>
       ${verdict}
       <div class="pred-bars">
         ${barRow('h', ctx.home.name, pred.home)}
@@ -672,27 +701,31 @@
         ${barRow('a', ctx.away.name, pred.away)}
       </div>
       <div class="pred-stats">
-        <div><i>${live ? 'Projected final' : 'Expected goals'}</i><b>${fmt2(pred.expectedHome)} – ${fmt2(pred.expectedAway)}</b></div>
-        <div><i>Most likely score</i><b>${top ? `${top.h}–${top.a}` : '–'}</b></div>
-        <div><i>Both teams score</i><b>${pct(pred.btts)}</b></div>
-        <div><i>Over 2.5 goals</i><b>${pct(pred.over25)}</b></div>
+        <div><i>${live ? 'Projected' : 'Expected goals'}</i><b>${fmt2(pred.expectedHome)} – ${fmt2(pred.expectedAway)}</b></div>
+        <div><i>Likeliest score</i><b>${top ? `${top.h}–${top.a}` : '–'}</b></div>
+        <div><i>Both score</i><b>${pct(pred.btts)}</b></div>
+        <div><i>Over 2.5</i><b>${pct(pred.over25)}</b></div>
       </div>
-      ${d.hp ? `<div class="pred-why"><div class="label">Why this prediction</div>${narrative(ctx, pred, d)}</div>` : ''}
-      ${compare}
+      ${factorCards(ctx, pred, d)}
       ${charts}
-      ${scatter}
-      ${players}
-      ${xgPanel}
       ${live ? movementBars(ctx.matchId, ctx, pred) : ''}
-      ${(pred.homeAbsences && pred.homeAbsences.length) || (pred.awayAbsences && pred.awayAbsences.length)
-        ? `<div class="pred-abs"><div class="label">Availability</div>${absenceChips(pred.homeAbsences, ctx.home.name)}${absenceChips(pred.awayAbsences, ctx.away.name)}</div>`
-        : ''}
-      <div class="pred-scores">${(pred.topScores || []).slice(0, 5).map(s =>
-        `<span class="sc-chip"><b>${s.h}–${s.a}</b><i>${pct(s.p)}</i></span>`).join('')}</div>
-      <ul class="pred-factors">${factors.map(f => `<li>${f}</li>`).join('')}</ul>
-      <p class="fine">Built from ${pred.ratingMatches || 0} past results, home advantage and availability signals. Football
-        is not predictable to this precision — a 50% call still loses half the time. ESPN publishes no injury data for
-        football, so availability is inferred and can be wrong. No betting odds are used.</p>`;
+      ${absBlock}
+      ${(compare || scatter || players || xgPanel) ? `<details class="more-detail">
+        <summary><span>Full numbers</span>${A.ICON && A.ICON.chevR ? A.ICON.chevR : ''}</summary>
+        <div class="more-body">${scatter}${compare}${players}${xgPanel}
+          <div class="viz" style="padding-top:8px">
+            <div class="viz-head"><b>Every likely score</b></div>
+            <div class="pred-scores">${(pred.topScores || []).slice(0, 6).map(s =>
+              `<span class="sc-chip"><b>${s.h}–${s.a}</b><i>${pct(s.p)}</i></span>`).join('')}</div>
+          </div>
+          <ul class="pred-factors">${[
+            pred.strength ? `Home advantage ×${fmt2(pred.strength.homeAdvantage)}` : '',
+            `Fitted on ${pred.ratingMatches || 0} matches`,
+            pred.lowConfidence ? 'Thin history — low confidence' : '',
+          ].filter(Boolean).map(f => `<li>${f}</li>`).join('')}</ul>
+        </div></details>` : ''}
+      <p class="fine">A 50% call still loses half the time. Injuries are not published for football, so availability is
+        inferred. No betting odds are used.</p>`;
   }
 
   /* called by app.js from the match page */
