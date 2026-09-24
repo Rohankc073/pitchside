@@ -1743,8 +1743,21 @@ function drawMatch(sum, lgId, matchId) {
     <div id="tabBody"></div>`);
 
   const body = $('#tabBody');
-  if (S.matchTab === 'summary') paint(body, `<section class="panel section"><div class="card-title"><span class="label">Match events</span></div>${timelineHTML(sum, home.id)}</section>
-    ${topPerformersHTML(sum, home, away)}${h2hHTML(sum, home, away)}${watchHTML(sum)}${highlightsHTML(sum)}${matchNewsHTML(sum)}`);
+  if (S.matchTab === 'summary') {
+    paint(body, `<section class="panel section predict" id="predictBox"></section>
+      <section class="panel section"><div class="card-title"><span class="label">Match events</span></div>${timelineHTML(sum, home.id)}</section>
+      ${topPerformersHTML(sum, home, away)}${h2hHTML(sum, home, away)}${watchHTML(sum)}${highlightsHTML(sum)}${matchNewsHTML(sum)}`);
+    if (window.PredictUI) {
+      const reds = (sum.keyEvents || []).filter(e => evKind(e) === 'red-card');
+      const sideReds = id => reds.filter(e => String(e.team && e.team.id) === String(id)).length;
+      window.PredictUI.renderMatchPrediction($('#predictBox'), {
+        lgId, matchId, home, away, date: comp.date, statusKind: st.kind,
+        hg: Number(home.score) || 0, ag: Number(away.score) || 0,
+        minute: parseInt(String((comp.status || {}).displayClock || '0'), 10) || 0,
+        redH: sideReds(home.id), redA: sideReds(away.id),
+      });
+    }
+  }
   else if (S.matchTab === 'stats') paint(body, `<section class="panel section">${statsHTML(sum, home, away)}</section>`);
   else if (S.matchTab === 'lineups') paint(body, `<section class="panel section">${pitchHTML(sum, home, away, lgId)}</section>`);
   else if (S.matchTab === 'players') paint(body, `<section class="panel section">${playersHTML(sum, home, away, lgId)}</section>`);
@@ -1793,6 +1806,7 @@ function parseHash() {
   if (parts[0] === 'league' && parts[1]) return { name: 'league', lg: parts[1], tab: parts[2] || 'fixtures' };
   if (parts[0] === 'team' && parts[2]) return { name: 'team', lg: parts[1], id: parts[2], tab: parts[3] || 'overview' };
   if (parts[0] === 'player' && parts[2]) return { name: 'player', lg: parts[1], id: parts[2] };
+  if (parts[0] === 'predictions') return { name: 'predictions' };
   if (parts[0] === 'table' && parts[1]) return { name: 'league', lg: parts[1], tab: 'table' };
   return { name: 'scores', date: startOfDay(new Date()) };
 }
@@ -1819,6 +1833,10 @@ async function route() {
   } else if (r.name === 'player') {
     setNav('leagues');
     await renderPlayer(r.lg, r.id);
+  } else if (r.name === 'predictions') {
+    setNav('predictions');
+    renderSidebar();
+    if (window.PredictUI) await window.PredictUI.renderHub($('#main'), $('#rail'));
   } else {
     setNav('scores');
     S.date = r.date || startOfDay(new Date());
@@ -1930,6 +1948,17 @@ setInterval(() => {
   }
 }, 30000);
 setInterval(() => { if (!document.hidden && !isToday(S.date)) loadDay(new Date(), { silent: true, force: true }); }, 180000);
+
+/* everything predict-ui.js needs — one explicit surface rather than
+   reaching into internals, so refactors here break loudly not silently */
+window.PS = {
+  API, API2, CORE, WEB, LEAGUES, LG_BY_ID,
+  request, loadMonth, statusOf, normTeam, normEvent, lgName,
+  ensureSeason, getStandings, getPerson,
+  paint, esc, ICON, crest, lgLogo, avatar,
+  fmtTime, fmtDayShort, fmtDayLong, ymd, addDays, addMonths, startOfDay, parseYmd,
+  orderedLeagues, dayMap, S,
+};
 
 const tzEl = $('#tzNote');
 if (tzEl) tzEl.textContent = tzLabel();

@@ -36,6 +36,79 @@ match-by-match log with minutes, goals and assists.
 
 Follow clubs to pin them to the sidebar; pin competitions to reorder the scores page.
 
+## Predictions
+
+Every fixture gets win/draw/loss probabilities, expected goals and a likely-scoreline
+spread, shown on the match page and collected in the Predictions hub.
+
+### The model
+
+A **Dixon-Coles style bivariate Poisson**. Each club carries an attack and a defence
+rating; a league-wide home multiplier and a low-score correlation term complete it:
+
+    lambda_home = M * attack[home] * defence[away] * H
+    lambda_away = M * attack[away] * defence[home]
+
+Ratings are fitted by iterative proportional fitting over the last 13 months of results,
+weighted by exponential time decay, with shrinkage pulling thin-sample clubs toward the
+league average. The score matrix is then read off for 1X2, both-teams-to-score,
+over/under and exact scorelines.
+
+**Measured performance** — walk-forward backtest over 2025-26 (fit on earlier matchdays
+only, predict the next; 795 scored predictions across three leagues):
+
+| League | RPS | Uniform baseline | Outcome accuracy |
+|---|---|---|---|
+| Premier League | 0.2110 | 0.2283 | 45.9% |
+| LaLiga | 0.2078 | 0.2386 | 52.3% |
+| Bundesliga | 0.1975 | 0.2345 | 54.6% |
+| **Average** | **0.2054** | **0.222** | **50.9%** |
+
+Run it yourself: `node backtest.js eng.1 202508 10`.
+
+RPS (ranked probability score, lower is better) is the standard ordered metric for 1X2.
+For reference, betting-market odds score around 0.19 — the gap is the value of
+information this model does not have.
+
+### Live predictions
+
+Once a match kicks off, remaining expected goals are scaled by time left and adjusted for
+game state (trailing sides push, leaders sit deeper) and red cards, then convolved with
+the current score. The match page charts how the probabilities moved.
+
+### Availability
+
+ESPN publishes **no injury data for football**, and squads are empty until roughly an hour
+before kick-off. Availability is therefore assembled from four weaker signals, each
+weighted by how much it can be trusted:
+
+| Signal | Weight | Reliability |
+|---|---|---|
+| Red-card suspension | 1.0 | Exact — derived from match events |
+| Manual override | 1.0 | Exact — you set it |
+| Missing from recent line-ups | 0.6 | Cannot distinguish injury from rotation; only reacts after a missed match |
+| News keyword match | 0.4 | Fragile; shown as an unconfirmed report with its source |
+
+Each absent player removes a share of their club's goals; the total adjustment is capped
+at 20% so one bad signal cannot distort a prediction.
+
+### Scored, and honest about it
+
+Every pre-match prediction is written to a ledger and scored at full time (RPS, correct or
+wrong) against the coin-toss baseline. The hub shows the running record and a calibration
+chart — whether a stated 60% actually happens 60% of the time.
+
+**Two honest limitations.** The ledger lives in `localStorage`, so the live track record is
+per-browser; the backtests are the reproducible, shared measure. And temperature
+calibration was tested and **did not** improve out-of-sample scores, so it is not applied —
+the raw model is already reasonably calibrated.
+
+**xG is not used in the model.** ESPN carries xG only for the current season, so there is no
+historical xG to validate a blend against. The code path exists and is switched off rather
+than shipping an unmeasured claim.
+
+No betting odds are used or displayed, and nothing here is advice.
+
 ## Data sources
 
 - **Match data**: ESPN's public soccer feeds (`site.api.espn.com`,
