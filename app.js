@@ -2015,11 +2015,27 @@ function parseHash() {
 function setNav(name) {
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('active', a.dataset.nav === name));
 }
+const scrollMemory = new Map();
+let lastHash = location.hash;
+
+function rememberScroll() {
+  scrollMemory.set(lastHash || '#/', window.scrollY || 0);
+}
+function restoreScroll(hash) {
+  const y = scrollMemory.get(hash);
+  if (y == null) { window.scrollTo({ top: 0 }); return; }
+  // wait for the first paint of the new view before jumping
+  requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: y })));
+}
+
 async function route() {
+  rememberScroll();
   const r = parseHash();
   const prev = S.route;
   S.route = r;
-  window.scrollTo({ top: 0 });
+  const target = location.hash || '#/';
+  lastHash = target;
+  restoreScroll(target);
   if (r.name === 'match') {
     setNav('scores');
     if (!dayMap(S.date).size) loadDay(S.date, { silent: true });
@@ -2389,6 +2405,25 @@ window.PS = {
   fmtTime, fmtDayShort, fmtDayLong, ymd, addDays, addMonths, startOfDay, parseYmd,
   orderedLeagues, dayMap, S,
 };
+
+/* long pages (a full season is 380 rows) deserve a way back up */
+const toTop = document.createElement('button');
+toTop.className = 'to-top';
+toTop.type = 'button';
+toTop.hidden = true;
+toTop.setAttribute('aria-label', 'Back to top');
+toTop.innerHTML = ICON.chevR;
+toTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+document.body.appendChild(toTop);
+let tickingTop = false;
+window.addEventListener('scroll', () => {
+  if (tickingTop) return;
+  tickingTop = true;
+  requestAnimationFrame(() => {
+    toTop.hidden = window.scrollY < 700;
+    tickingTop = false;
+  });
+}, { passive: true });
 
 maybeShowNotice();
 
