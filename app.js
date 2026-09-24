@@ -950,21 +950,84 @@ async function fillLeagueStats(lgId, body) {
   await fetchPhotos(Object.keys(resolved.people).map(id => resolved.people[id] && resolved.people[id].name));
   draw();
 }
+/* Clubs directory. Every competition we cover does publish one, so a failure
+   here is a bad response rather than missing data — say so, offer a retry, and
+   fall back to sources already cached before giving up. */
 async function fillLeagueTeams(lgId, body) {
   paint(body, `<section class="panel"><div class="note">Loading clubs…</div></section>`);
+  let teams = [];
+  let source = 'directory';
+  let reason = '';
+
+  const norm = t => ({
+    id: t.id,
+    name: t.shortDisplayName || t.displayName,
+    full: t.displayName,
+    abbr: t.abbreviation || '',
+    logo: (t.logos && t.logos[0] && t.logos[0].href) || t.logo || '',
+  });
+
   try {
     const data = await request(`${API}/${lgId}/teams`, { ttl: 86400000 });
-    const teams = ((((data.sports || [])[0] || {}).leagues || [])[0] || {}).teams || [];
-    if (!teams.length) throw new Error('empty');
-    paint(body, `<section class="panel"><div class="card-title"><span class="label">${teams.length} clubs</span></div>
-      <div class="club-grid">${teams.map(({ team: t }) => `<a class="club" href="#/team/${esc(lgId)}/${esc(t.id)}">
-        ${crest({ logo: (t.logos && t.logos[0] && t.logos[0].href) || '', name: t.displayName, abbr: t.abbreviation }, 'crest lg')}
-        <span class="club-nm">${esc(t.shortDisplayName || t.displayName)}</span></a>`).join('')}</div></section>`);
+    teams = ((((data.sports || [])[0] || {}).leagues || [])[0] || {}).teams || [];
+    teams = teams.map(x => x && x.team).filter(Boolean).map(norm);
   } catch (err) {
-    paint(body, `<section class="panel empty"><div class="empty-ic">${ICON.shirt}</div>
-      <h3>Club list unavailable</h3><p>This competition does not publish a club directory — open a match to reach a club page.</p></section>`);
+    reason = String((err && err.message) || err);
   }
+
+  // fall back to the league table, which is usually cached already
+  if (!teams.length) {
+    try {
+      const st = await getStandings(lgId);
+      const seen = new Set();
+      st.groups.forEach(g => g.entries.forEach(e => {
+        if (e.id && !seen.has(String(e.id))) {
+          seen.add(String(e.id));
+          teams.push({ id: e.id, name: e.short || e.name, full: e.name, abbr: e.abbr, logo: e.logo });
+        }
+      }));
+      if (teams.length) source = 'table';
+    } catch (err) { /* keep trying */ }
+  }
+
+  // last resort: whoever appears in this season's fixtures
+  if (!teams.length) {
+    try {
+      const seen = new Set();
+      const now = new Date();
+      const months = await Promise.all([-1, 0, 1].map(i => loadMonth(lgId, addMonths(now, i)).catch(() => [])));
+      months.flat().forEach(e => {
+        [e.home, e.away].forEach(t => {
+          if (t && t.id && !seen.has(String(t.id))) {
+            seen.add(String(t.id));
+            teams.push({ id: t.id, name: t.name, full: t.full, abbr: t.abbr, logo: t.logo });
+          }
+        });
+      });
+      if (teams.length) source = 'fixtures';
+    } catch (err) { /* nothing left to try */ }
+  }
+
+  if (S.route.name !== 'league' || S.route.lg !== lgId) return;
+
+  if (!teams.length) {
+    paint(body, `<section class="panel empty"><div class="empty-ic">${ICON.info}</div>
+      <h3>Couldn't load the clubs</h3>
+      <p>The club list didn't come back this time. This competition does publish one, so it is worth another try.</p>
+      <div class="empty-actions"><button class="btn" data-act="retry-teams">${ICON.refresh} Try again</button></div>
+      ${reason ? `<p class="fine">${esc(reason)}</p>` : ''}</section>`);
+    return;
+  }
+
+  teams.sort((a, b) => String(a.full || a.name).localeCompare(String(b.full || b.name)));
+  paint(body, `<section class="panel">
+    <div class="card-title"><span class="label">${teams.length} clubs</span>
+      ${source !== 'directory' ? `<span class="label">from the ${esc(source)}</span>` : ''}</div>
+    <div class="club-grid">${teams.map(t => `<a class="club" href="#/team/${esc(lgId)}/${esc(t.id)}">
+      ${crest(t, 'crest lg')}
+      <span class="club-nm">${esc(t.name || t.full)}</span></a>`).join('')}</div></section>`);
 }
+
 async function fillLeagueMatches(lgId, body, mode) {
   const base = addMonths(new Date(), S.monthOffset);
   const label = base.toLocaleDateString([], { month: 'long', year: 'numeric' });
@@ -2036,6 +2099,7 @@ document.addEventListener('click', e => {
     const a = act.dataset.act;
     if (a === 'reload') loadDay(S.date, { force: true });
     if (a === 'reload-month' && S.route.name === 'league') renderLeague(S.route.lg, S.route.tab);
+    if (a === 'retry-teams' && S.route.name === 'league') { cache.delete(`${API}/${S.route.lg}/teams`); renderLeague(S.route.lg, S.route.tab); }
     if (a === 'clear') { S.filter = 'all'; S.q = ''; const s = $('#search'); if (s) s.value = ''; renderScoresBody(); }
     if (a === 'next-day' && act.dataset.day) goDate(parseYmd(act.dataset.day));
   }
