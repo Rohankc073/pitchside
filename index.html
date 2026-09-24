@@ -23,10 +23,19 @@
   <meta name="twitter:image" content="https://rohankc073.github.io/pitchside/og.png">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="preconnect" href="https://site.api.espn.com" crossorigin>
+  <link rel="preconnect" href="https://a.espncdn.com" crossorigin>
+  <link rel="dns-prefetch" href="https://sports.core.api.espn.com">
+  <link rel="dns-prefetch" href="https://en.wikipedia.org">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+        onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+  <script src="predictions.js" defer></script>
+  <script src="predict-ui.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -81,9 +90,6 @@
     <br><a href="#/privacy">Your data</a> · no cookies, no tracking.
   </footer>
 
-  <script src="app.js"></script>
-  <script src="predictions.js"></script>
-  <script src="predict-ui.js"></script>
   <script>
     // offline support; harmless if the browser has no service worker
     if ("serviceWorker" in navigator) {

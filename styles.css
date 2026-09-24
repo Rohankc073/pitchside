@@ -1147,6 +1147,17 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
   .to-top { right: 14px; bottom: 14px; }
 }
 
+
+/* Long pages skip layout and paint for groups that are off-screen. A full
+   season schedule is 100+ day sections; this keeps scrolling smooth.
+   contain-intrinsic-size: auto lets the browser remember real heights once
+   measured, so the scrollbar does not jump around. */
+.groups .group, .group.section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+.panel, .group { contain: layout style; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }

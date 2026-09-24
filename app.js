@@ -366,40 +366,70 @@ function espnDays(date) {
   else if (offset < 0) days.push(addDays(date, 1));
   return days;
 }
-async function loadLeagueDay(lg, date, force) {
+/* One league, one ESPN day. Kept separate so a page load can sweep every
+   league for the main day first and fill the screen, then quietly pick up the
+   neighbouring day afterwards. Previously each league did both days back to
+   back, so the last league waited on 38 sequential round trips. */
+async function loadLeagueDayPart(lg, date, espnDay, force) {
   const key = ymd(date);
   const ttl = isToday(date) ? 25000 : 600000;
-  const found = new Map();
-  let ok = false;
-  for (const d of espnDays(date)) {
-    try {
-      const data = await request(`${API}/${lg.id}/scoreboard?dates=${ymd(d)}`, { ttl, force });
-      ok = true;
-      absorbMeta(lg.id, data);
-      (data.events || []).forEach(e => {
-        if (!found.has(e.id) && ymd(new Date(e.date)) === key) found.set(e.id, normEvent(e, lg.id));
-      });
-    } catch (err) { /* neighbour day may still work */ }
+  const map = dayMap(date);
+  try {
+    const data = await request(`${API}/${lg.id}/scoreboard?dates=${ymd(espnDay)}`, { ttl, force });
+    absorbMeta(lg.id, data);
+    const bucket = map.get(lg.id) || { events: [], seen: {} };
+    bucket.error = false;
+    if (!bucket.seen) bucket.seen = {};
+    (data.events || []).forEach(e => {
+      if (bucket.seen[e.id] || ymd(new Date(e.date)) !== key) return;
+      bucket.seen[e.id] = 1;
+      bucket.events.push(normEvent(e, lg.id));
+    });
+    bucket.events.sort((a, b) => new Date(a.date) - new Date(b.date));
+    map.set(lg.id, bucket);
+    return true;
+  } catch (err) {
+    if (!map.has(lg.id)) map.set(lg.id, { events: [], seen: {}, error: true });
+    return false;
   }
-  dayMap(date).set(lg.id, ok ? { events: [...found.values()].sort((a, b) => new Date(a.date) - new Date(b.date)) } : { events: [], error: true });
 }
+
 async function loadDay(date, opts = {}) {
   const token = ++S.token;
-  S.loading = LEAGUES.length;
+  const leagues = orderedLeagues();
+  const days = espnDays(date);
+  if (!opts.force) dayMap(date).forEach(b => { if (b) b.seen = b.seen || {}; });
+  S.loading = leagues.length;
   if (!opts.silent) renderScoresBody();
-  const queue = orderedLeagues().slice();
-  const worker = async () => {
-    while (queue.length) {
-      const lg = queue.shift();
-      await loadLeagueDay(lg, date, !!opts.force);
-      if (token !== S.token) return;
-      S.loading--;
-      scheduleRender();
-    }
+
+  const sweep = async (espnDay, counts) => {
+    const queue = leagues.slice();
+    const worker = async () => {
+      while (queue.length) {
+        const lg = queue.shift();
+        await loadLeagueDayPart(lg, date, espnDay, !!opts.force);
+        if (token !== S.token) return;
+        if (counts && S.loading > 0) S.loading--;
+        scheduleRender();
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, worker));
   };
-  await Promise.all(Array.from({ length: 4 }, worker));
-  if (token === S.token) { S.loading = 0; scheduleRender(); }
+
+  // the day itself first: after this pass the page is usable
+  await sweep(days[0], true);
+  if (token !== S.token) return;
+  S.loading = 0;
+  scheduleRender();
+
+  // then the neighbouring ESPN day, which only ever adds late or early kick-offs
+  for (let i = 1; i < days.length; i++) {
+    await sweep(days[i], false);
+    if (token !== S.token) return;
+    scheduleRender();
+  }
 }
+
 async function loadMonth(lgId, monthDate, force) {
   const key = `${lgId}|${ym(monthDate)}`;
   if (!force && S.months.has(key)) return S.months.get(key);
