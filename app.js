@@ -484,7 +484,9 @@ function matchRow(m, opts = {}) {
   let score;
   if (played) score = `<div class="score"><span class="box">${esc(m.home.score || '0')}</span><span class="box">${esc(m.away.score || '0')}</span></div>`;
   else if (st.kind === 'off') score = `<div class="score off">${esc(st.label)}</div>`;
-  else score = `<div class="score pre"><span class="vs">${esc(fmtTime(m.date))}</span></div>`;
+  // the status column already carries the kick-off time; repeating it here
+  // just ate width on narrow screens
+  else score = `<div class="score pre"><span class="vs">v</span></div>`;
   const pens = (m.home.shootout != null && m.away.shootout != null && (+m.home.shootout || +m.away.shootout))
     ? `<div class="pens">Penalties ${esc(m.home.shootout)}–${esc(m.away.shootout)}</div>` : '';
   const scorers = !opts.compact && (g.home.length || g.away.length) ? `
