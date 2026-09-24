@@ -449,8 +449,114 @@
     };
   }
 
+
+  /* ---------------- descriptive analytics ----------------
+     Everything below explains a prediction rather than producing it: form,
+     home/away splits, league ranks, goal distributions. All derived from the
+     same match list the ratings are fitted on, so nothing extra is fetched. */
+
+  function teamProfile(matches, teamId, opts) {
+    const o = opts || {};
+    const id = String(teamId);
+    const games = (matches || [])
+      .filter(m => String(m.home) === id || String(m.away) === id)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+    const blank = { played: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, cs: 0, pts: 0 };
+    const all = Object.assign({}, blank);
+    const home = Object.assign({}, blank);
+    const away = Object.assign({}, blank);
+    const recent = [];
+
+    games.forEach(m => {
+      const atHome = String(m.home) === id;
+      const gf = atHome ? m.hg : m.ag;
+      const ga = atHome ? m.ag : m.hg;
+      const res = gf > ga ? "W" : gf === ga ? "D" : "L";
+      const bucket = atHome ? home : away;
+      [all, bucket].forEach(b => {
+        b.played++; b.gf += gf; b.ga += ga;
+        if (res === "W") { b.w++; b.pts += 3; } else if (res === "D") { b.d++; b.pts += 1; } else b.l++;
+        if (ga === 0) b.cs++;
+      });
+      recent.push({
+        date: m.date, res, gf, ga, atHome,
+        opponent: atHome ? (m.awayName || m.away) : (m.homeName || m.home),
+        opponentId: atHome ? m.away : m.home,
+        xg: atHome ? m.hxg : m.axg,
+        xga: atHome ? m.axg : m.hxg,
+      });
+    });
+
+    const per = b => ({
+      played: b.played, w: b.w, d: b.d, l: b.l, gf: b.gf, ga: b.ga, cs: b.cs, pts: b.pts,
+      gfpg: b.played ? b.gf / b.played : 0,
+      gapg: b.played ? b.ga / b.played : 0,
+      ppg: b.played ? b.pts / b.played : 0,
+      csRate: b.played ? b.cs / b.played : 0,
+    });
+    const lastN = recent.slice(-(o.formGames || 6)).reverse();
+    const formPts = lastN.reduce((s, r) => s + (r.res === "W" ? 3 : r.res === "D" ? 1 : 0), 0);
+    return {
+      all: per(all), home: per(home), away: per(away),
+      recent: lastN,
+      formPoints: formPts,
+      formMax: lastN.length * 3,
+      formGfpg: lastN.length ? lastN.reduce((s, r) => s + r.gf, 0) / lastN.length : 0,
+      formGapg: lastN.length ? lastN.reduce((s, r) => s + r.ga, 0) / lastN.length : 0,
+    };
+  }
+
+  // where a club sits in its own league for attack and defence
+  function leagueRanks(ratings) {
+    if (!ratings) return {};
+    const rows = ratings.teams.map((t, i) => ({ id: t, attack: ratings.A[i], defence: ratings.D[i] }));
+    const byAttack = rows.slice().sort((a, b) => b.attack - a.attack);
+    const byDefence = rows.slice().sort((a, b) => a.defence - b.defence); // lower concedes less
+    const out = {};
+    rows.forEach(r => {
+      out[r.id] = {
+        attack: r.attack, defence: r.defence,
+        attackRank: byAttack.findIndex(x => x.id === r.id) + 1,
+        defenceRank: byDefence.findIndex(x => x.id === r.id) + 1,
+        of: rows.length,
+      };
+    });
+    out.__all = rows;
+    return out;
+  }
+
+  // P(total goals = k) and the cumulative over/under ladder
+  function goalsDistribution(matrix, maxTotal) {
+    const N = matrix.length;
+    const cap = maxTotal || 6;
+    const dist = new Array(cap + 1).fill(0);
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const t = Math.min(cap, i + j);
+        dist[t] += matrix[i][j];
+      }
+    }
+    return dist;
+  }
+
+  // "which side does each scoreline favour" — for shading a heatmap
+  function matrixCells(matrix, cap) {
+    const N = Math.min(matrix.length, (cap || 5) + 1);
+    const cells = [];
+    let max = 0;
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (matrix[i][j] > max) max = matrix[i][j];
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        cells.push({ h: i, a: j, p: matrix[i][j], rel: max > 0 ? matrix[i][j] / max : 0,
+                     side: i > j ? "home" : i === j ? "draw" : "away" });
+      }
+    }
+    return { cells, size: N, max };
+  }
+
   return {
     DEFAULTS, fitRatings, predict, inPlay, scoreMatrix, summarise,
+    teamProfile, leagueRanks, goalsDistribution, matrixCells,
     availabilityFactor, SIGNAL_WEIGHT,
     rps, brier, logLoss, outcomeOf, pickOf,
     fitTemperature, applyTemperature, reliability, backtest,
