@@ -2002,6 +2002,7 @@ function parseHash() {
   if (parts[0] === 'team' && parts[2]) return { name: 'team', lg: parts[1], id: parts[2], tab: parts[3] || 'overview' };
   if (parts[0] === 'player' && parts[2]) return { name: 'player', lg: parts[1], id: parts[2] };
   if (parts[0] === 'predictions') return { name: 'predictions' };
+  if (parts[0] === 'privacy') return { name: 'privacy' };
   if (parts[0] === 'table' && parts[1]) return { name: 'league', lg: parts[1], tab: 'table' };
   return { name: 'scores', date: startOfDay(new Date()) };
 }
@@ -2028,6 +2029,8 @@ async function route() {
   } else if (r.name === 'player') {
     setNav('leagues');
     await renderPlayer(r.lg, r.id);
+  } else if (r.name === 'privacy') {
+    renderPrivacy();
   } else if (r.name === 'predictions') {
     setNav('predictions');
     renderSidebar();
@@ -2070,6 +2073,13 @@ document.addEventListener('click', e => {
     if (S.route.name === 'team') renderTeam(S.route.lg, S.route.id);
     return;
   }
+  if (e.target.closest('[data-close-search]')) {
+    const box = $('#searchDrop'); if (box) { box.hidden = true; box.innerHTML = ''; }
+    const s2 = $('#search'); if (s2) s2.value = '';
+    S.q = '';
+    return;
+  }
+  if (!e.target.closest('.search')) { const box = $('#searchDrop'); if (box) box.hidden = true; }
   const rowLink = e.target.closest('[data-href]');
   if (rowLink && !e.target.closest('a')) { location.hash = rowLink.dataset.href; return; }
   const shift = e.target.closest('[data-shift]');
@@ -2102,6 +2112,14 @@ document.addEventListener('click', e => {
     if (a === 'retry-teams' && S.route.name === 'league') { cache.delete(`${API}/${S.route.lg}/teams`); renderLeague(S.route.lg, S.route.tab); }
     if (a === 'clear') { S.filter = 'all'; S.q = ''; const s = $('#search'); if (s) s.value = ''; renderScoresBody(); }
     if (a === 'next-day' && act.dataset.day) goDate(parseYmd(act.dataset.day));
+    if (a === 'reload-page') location.reload();
+    if (a === 'dismiss-fatal') { const b = document.querySelector('.fatal'); if (b) b.remove(); fatalShown = false; }
+    if (a === 'dismiss-notice') {
+      try { localStorage.setItem('pitchside.noticeSeen', '1'); } catch (err) {}
+      const n = document.querySelector('.notice-bar'); if (n) n.remove();
+    }
+    if (a === 'clear-cache') clearStorage('cache');
+    if (a === 'clear-all') clearStorage('all');
   }
 });
 document.addEventListener('keydown', e => {
@@ -2129,8 +2147,9 @@ document.addEventListener('input', e => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     S.q = e.target.value;
-    if (S.route.name !== 'scores') location.hash = isToday(S.date) ? '#/' : `#/d/${ymd(S.date)}`;
-    else renderScoresBody();
+    if (S.q.trim().length >= 2) buildClubIndex().then(() => renderSearchResults($('#search') ? $('#search').value : ''));
+    renderSearchResults(S.q);
+    if (S.route.name === 'scores') renderScoresBody();
   }, 200);
 });
 $('#livePill').addEventListener('click', () => { S.filter = 'live'; goDate(new Date()); });
@@ -2149,6 +2168,211 @@ setInterval(() => {
 }, 30000);
 setInterval(() => { if (!document.hidden && !isToday(S.date)) loadDay(new Date(), { silent: true, force: true }); }, 180000);
 
+
+/* ---------------- failure handling ----------------
+   95 render paths and no safety net meant one thrown error left a blank panel
+   with no explanation. Network blips get a quiet toast; genuine bugs get a
+   banner that admits something broke and offers a reload. */
+let fatalShown = false;
+const NETWORKISH = /HTTP \d|Failed to fetch|NetworkError|Load failed|network|aborted/i;
+
+function showToast(message) {
+  const old = document.querySelector('.toast');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.setAttribute('role', 'status');
+  el.innerHTML = `${ICON.info}<span>${esc(message)}</span>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+}
+
+function showFatal(detail) {
+  if (fatalShown) return;
+  fatalShown = true;
+  const el = document.createElement('div');
+  el.className = 'fatal';
+  el.setAttribute('role', 'alert');
+  el.innerHTML = `<div class="fatal-in">
+      <b>Something broke on this page</b>
+      <span>The rest of the site still works. Reloading usually clears it.</span>
+      ${detail ? `<code>${esc(String(detail).slice(0, 160))}</code>` : ''}
+      <button class="btn" data-act="reload-page">${ICON.refresh} Reload</button>
+      <button class="btn ghost" data-act="dismiss-fatal">Dismiss</button>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+window.addEventListener('error', e => {
+  const msg = (e.error && e.error.message) || e.message || '';
+  if (NETWORKISH.test(msg)) showToast('Connection problem — showing what we have.');
+  else showFatal(msg);
+});
+window.addEventListener('unhandledrejection', e => {
+  const msg = (e.reason && (e.reason.message || e.reason)) || '';
+  if (NETWORKISH.test(String(msg))) showToast('Some data could not be loaded just now.');
+  else showFatal(String(msg));
+});
+
+/* ---------------- what this site keeps on your device ----------------
+   No cookies and no tracking: everything below is localStorage on this device
+   only, and never leaves it. The panel exists so that is verifiable, not
+   merely claimed. */
+const STORAGE_KEYS = [
+  ['pitchside.favs', 'Clubs you follow', true],
+  ['pitchside.pins', 'Competitions you pinned', true],
+  ['pitchside.manualOut', 'Players you marked unavailable', true],
+  ['pitchside.ledger', 'Predictions made, and whether they came true', true],
+  ['pitchside.moves', 'How live predictions moved during matches', false],
+  ['pitchside.ratings', 'Fitted team strength ratings', false],
+  ['pitchside.playerRatings', 'Player ratings already calculated', false],
+  ['pitchside.photos', 'Which players have a Wikipedia photo', false],
+  ['pitchside.people', 'Player names already looked up', false],
+  ['pitchside.teams', 'Club names and crests', false],
+  ['pitchside.clubs', 'Club descriptions', false],
+  ['pitchside.lgmeta', 'Competition names, logos and season dates', false],
+  ['pitchside.xg', 'Expected goals already fetched', false],
+];
+
+function storageReport() {
+  let total = 0;
+  const rows = STORAGE_KEYS.map(([key, label, keep]) => {
+    let size = 0, present = false;
+    try { const v = localStorage.getItem(key); if (v != null) { size = v.length; present = true; } } catch (e) {}
+    total += size;
+    return { key, label, keep, size, present };
+  });
+  return { rows, total };
+}
+
+function renderPrivacy() {
+  setNav('');
+  const { rows, total } = storageReport();
+  const kb = n => n > 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} bytes`;
+  paint($('#main'), `
+    <a class="back" href="#/">${ICON.chevL} Back to scores</a>
+    <div class="toolbar"><div>
+      <h1 class="page-title">Your data</h1>
+      <p class="page-sub">What this site keeps, where it keeps it, and how to remove it.</p>
+    </div></div>
+
+    <section class="panel section">
+      <div class="card-title"><span class="label">The short version</span></div>
+      <div class="privacy-points">
+        <div><b>No cookies.</b><span>This site never sets one. Nothing is used to identify or follow you.</span></div>
+        <div><b>No tracking or analytics.</b><span>There is no analytics script, no advertising code, and no third-party tracker.</span></div>
+        <div><b>Nothing is sent to us.</b><span>There is no account and no server of ours. Your choices stay in this browser.</span></div>
+        <div><b>You can wipe it anytime.</b><span>The buttons below clear it immediately and permanently.</span></div>
+      </div>
+    </section>
+
+    <section class="panel section">
+      <div class="card-title"><span class="label">Stored in this browser</span><span class="label">${kb(total)} total</span></div>
+      <div class="table-wrap"><table class="tbl">
+        <thead><tr><th class="team">What</th><th>Kind</th><th>Size</th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td class="team">${esc(r.label)}<small style="display:block;color:var(--text-3)">${esc(r.key)}</small></td>
+          <td>${r.keep ? 'Your choices' : 'Cached data'}</td>
+          <td class="${r.present ? '' : 'zero'}">${r.present ? kb(r.size) : '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+      <div class="empty-actions" style="padding:16px 18px">
+        <button class="btn ghost" data-act="clear-cache">Clear cached data, keep my clubs</button>
+        <button class="btn danger" data-act="clear-all">Delete everything</button>
+      </div>
+    </section>
+
+    <section class="panel section">
+      <div class="card-title"><span class="label">Requests that leave your device</span></div>
+      <div class="privacy-points">
+        <div><b>ESPN</b><span>Every score, fixture, table and statistic. They necessarily see your IP address, as any site you load data from would.</span></div>
+        <div><b>Wikipedia / Wikimedia</b><span>Player photographs and club descriptions, fetched by name.</span></div>
+        <div><b>Google Fonts</b><span>The Inter typeface. This is the one purely cosmetic third party, and it also sees your IP.</span></div>
+      </div>
+      <p class="fine">No request carries an identifier for you, because none exists.</p>
+    </section>`);
+  $('#rail').innerHTML = '';
+  renderSidebar();
+}
+
+function clearStorage(mode) {
+  STORAGE_KEYS.forEach(([key, , keep]) => {
+    if (mode === 'all' || !keep) { try { localStorage.removeItem(key); } catch (e) {} }
+  });
+  try { if (mode === 'all') localStorage.removeItem('pitchside.noticeSeen'); } catch (e) {}
+  showToast(mode === 'all' ? 'Everything deleted from this browser.' : 'Cached data cleared. Your clubs are untouched.');
+  setTimeout(() => location.reload(), 900);
+}
+
+/* a one-time, non-blocking note — not a consent gate, because nothing here
+   needs consent: no cookies, no tracking, no data leaving the device */
+function maybeShowNotice() {
+  let seen = false;
+  try { seen = localStorage.getItem('pitchside.noticeSeen') === '1'; } catch (e) { seen = true; }
+  if (seen || document.querySelector('.notice-bar')) return;
+  const el = document.createElement('div');
+  el.className = 'notice-bar';
+  el.innerHTML = `<div class="nb-in">
+      <span><b>Pitchside remembers your clubs on this device.</b>
+        No cookies, no tracking, nothing sent anywhere.</span>
+      <span class="nb-actions">
+        <a class="btn ghost" href="#/privacy">What's stored</a>
+        <button class="btn" data-act="dismiss-notice">Got it</button>
+      </span></div>`;
+  document.body.appendChild(el);
+}
+
+/* ---------------- search across the whole site ---------------- */
+let clubIndex = null, clubIndexPromise = null;
+async function buildClubIndex() {
+  if (clubIndex) return clubIndex;
+  if (!clubIndexPromise) {
+    clubIndexPromise = (async () => {
+      const seen = new Set();
+      const out = [];
+      await Promise.all(orderedLeagues().slice(0, 8).map(async lg => {
+        try {
+          const data = await request(`${API}/${lg.id}/teams`, { ttl: 86400000 });
+          const teams = ((((data.sports || [])[0] || {}).leagues || [])[0] || {}).teams || [];
+          teams.forEach(x => {
+            const t = x && x.team;
+            if (!t || !t.id || seen.has(String(t.id))) return;
+            seen.add(String(t.id));
+            out.push({ id: t.id, lg: lg.id, name: t.displayName, short: t.shortDisplayName || t.displayName,
+                       abbr: t.abbreviation || '', logo: (t.logos && t.logos[0] && t.logos[0].href) || '' });
+          });
+        } catch (err) { /* one league missing is fine */ }
+      }));
+      clubIndex = out;
+      return out;
+    })();
+  }
+  return clubIndexPromise;
+}
+
+function renderSearchResults(q) {
+  const box = $('#searchDrop');
+  if (!box) return;
+  const term = q.trim().toLowerCase();
+  if (term.length < 2) { box.hidden = true; box.innerHTML = ''; return; }
+  const leagues = LEAGUES.filter(l => l.name.toLowerCase().includes(term) || l.region.toLowerCase().includes(term)).slice(0, 3);
+  const clubs = (clubIndex || []).filter(c =>
+    c.name.toLowerCase().includes(term) || c.short.toLowerCase().includes(term) || c.abbr.toLowerCase() === term).slice(0, 7);
+  if (!leagues.length && !clubs.length) {
+    box.hidden = false;
+    box.innerHTML = `<div class="sd-empty">${clubIndex ? 'Nothing matches that.' : 'Searching clubs…'}</div>`;
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = `
+    ${clubs.length ? `<div class="sd-group"><span class="label">Clubs</span>
+      ${clubs.map(c => `<a class="sd-row" href="#/team/${esc(c.lg)}/${esc(c.id)}" data-close-search="1">
+        ${crest(c)}<span>${esc(c.name)}</span><i>${esc(lgName(c.lg))}</i></a>`).join('')}</div>` : ''}
+    ${leagues.length ? `<div class="sd-group"><span class="label">Competitions</span>
+      ${leagues.map(l => `<a class="sd-row" href="#/league/${esc(l.id)}" data-close-search="1">
+        ${lgLogo(l.id)}<span>${esc(l.name)}</span><i>${esc(l.region)}</i></a>`).join('')}</div>` : ''}`;
+}
+
 /* everything predict-ui.js needs — one explicit surface rather than
    reaching into internals, so refactors here break loudly not silently */
 window.PS = {
@@ -2159,6 +2383,8 @@ window.PS = {
   fmtTime, fmtDayShort, fmtDayLong, ymd, addDays, addMonths, startOfDay, parseYmd,
   orderedLeagues, dayMap, S,
 };
+
+maybeShowNotice();
 
 const tzEl = $('#tzNote');
 if (tzEl) tzEl.textContent = tzLabel();

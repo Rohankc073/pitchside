@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pitchside">
+  <rect width="512" height="512" rx="116" fill="#3ddc84"/>
+  <g fill="none" stroke="#04230f" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="256" cy="256" r="150"/>
+    <path d="M256 152l64 46-24 76h-80l-24-76z"/>
+    <path d="M256 106v46M406 218l-86 12M106 218l86 12M354 380l-58-78M158 380l58-78"/>
+  </g>
+</svg>

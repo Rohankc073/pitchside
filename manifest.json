@@ -1,0 +1,16 @@
+{
+  "name": "Pitchside — Live Football Scores",
+  "short_name": "Pitchside",
+  "description": "Live scores, fixtures, tables, line-ups, player ratings and match predictions.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0e13",
+  "theme_color": "#0a0e13",
+  "categories": ["sports", "news"],
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "./og.png", "sizes": "1200x630", "type": "image/png", "purpose": "any" }
+  ]
+}

@@ -122,6 +122,34 @@ than shipping an unmeasured claim.
 
 No betting odds are used or displayed, and nothing here is advice.
 
+## Tests
+
+```bash
+node test.js        # 26 assertions, no dependencies
+node backtest.js eng.1 202508 10   # walk-forward model backtest over a real season
+```
+
+The suite pins the maths that fails silently: probability distributions summing to one,
+RPS against hand-computed values, the in-play model, the availability cap, player-rating
+bounds, and two regressions that once shipped looking perfectly plausible — home advantage
+collapsing to 1.06 against a real 1.25, and a season schedule counting 424 matches instead
+of 380.
+
+## Privacy
+
+No cookies, no analytics, no third-party tracking scripts. Preferences (followed clubs,
+pinned competitions, prediction history) are stored in `localStorage` on your device and
+never sent anywhere — there is no account and no backend. The **Your data** page lists every
+stored key with its size and offers one-click deletion. Outbound requests go only to ESPN
+(match data), Wikipedia/Wikimedia (photos and club descriptions) and Google Fonts (the
+typeface); none carries an identifier.
+
+## Offline
+
+A service worker caches the app shell and the most recent API responses, so the site opens
+instantly on repeat visits, survives a dropped connection by showing the last known data,
+and can be installed to a home screen.
+
 ## Data sources
 
 - **Match data**: ESPN's public soccer feeds (`site.api.espn.com`,

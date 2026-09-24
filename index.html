@@ -7,6 +7,22 @@
   <meta name="description" content="Live football scores, fixtures, results, tables, line-ups and player stats from the Champions League, Premier League, LaLiga, Serie A, Bundesliga and more.">
   <meta name="theme-color" content="#0a0e13">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='11' fill='%233ddc84'/><path d='m12 6 4.2 3.1-1.6 4.9H9.4L7.8 9.1z' fill='%23052b16'/></svg>">
+  <link rel="canonical" href="https://rohankc073.github.io/pitchside/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Pitchside">
+  <meta property="og:title" content="Pitchside — Live Football Scores">
+  <meta property="og:description" content="Live scores across 19 competitions, plus fixtures, tables, line-ups with player ratings, and match predictions scored against their own record.">
+  <meta property="og:url" content="https://rohankc073.github.io/pitchside/">
+  <meta property="og:image" content="https://rohankc073.github.io/pitchside/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Pitchside — live football scores and predictions">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Pitchside — Live Football Scores">
+  <meta name="twitter:description" content="Live scores, tables, line-ups with player ratings, and match predictions.">
+  <meta name="twitter:image" content="https://rohankc073.github.io/pitchside/og.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -37,7 +53,9 @@
         <span class="search-ic" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
         </span>
-        <input id="search" type="search" placeholder="Search a team…" autocomplete="off" aria-label="Search for a team">
+        <input id="search" type="search" placeholder="Search clubs and competitions…" autocomplete="off"
+               aria-label="Search clubs and competitions" role="combobox" aria-expanded="false" aria-controls="searchDrop">
+        <div class="search-drop" id="searchDrop" role="listbox" hidden></div>
       </div>
 
       <button class="live-pill" id="livePill" type="button" hidden>
@@ -60,10 +78,17 @@
     <a href="https://commons.wikimedia.org/" target="_blank" rel="noopener noreferrer">Wikimedia Commons</a>,
     available under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA</a>.
     An independent project, not affiliated with ESPN or any club or competition.
+    <br><a href="#/privacy">Your data</a> · no cookies, no tracking.
   </footer>
 
   <script src="app.js"></script>
   <script src="predictions.js"></script>
   <script src="predict-ui.js"></script>
+  <script>
+    // offline support; harmless if the browser has no service worker
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+    }
+  </script>
 </body>
 </html>
