@@ -593,7 +593,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabula
 .pos-item .rank { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .pos-item .rank sup { font-size: 10.5px; font-weight: 600; color: var(--text-3); }
 .pos-item .pts { color: var(--brand); font-weight: 600; font-size: 13px; }
-.pos-item .pl { color: var(--text-3); font-size: 12px; white-space: nowrap; }
 .pos-item .ic { width: 15px; height: 15px; color: var(--text-3); }
 
 /* ---------- misc ---------- */
@@ -1157,6 +1156,84 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
   contain-intrinsic-size: auto 320px;
 }
 .panel, .group { contain: layout style; }
+
+
+/* ============================================================
+   Small-screen hardening
+   Checked against 360px and 320px viewports: at 320 the match row
+   had only ~65px per club name, and several nowrap elements had no
+   ellipsis, so they widened the page instead of truncating.
+   ============================================================ */
+
+/* Nothing may scroll the page sideways. clip rather than hidden, because
+   hidden would create a scroll container and break position: sticky. */
+html, body { overflow-x: clip; max-width: 100%; }
+.layout, .main, .sidebar, .rail { min-width: 0; max-width: 100%; }
+.panel, .group, .match, .toolbar, .viz, .cmp, .factors { min-width: 0; }
+
+/* anything that refuses to wrap must be able to truncate instead */
+.sq-meta, .played, .bt-res, .vval.rank, .sd-row i, .chip, .tab, .live-pill,
+.up-pick, .up-teams, .club-nm, .spot-team span, .pitch-bar b, .mv-row span {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* long club names and player names should never force a scrollbar */
+.tm .nm, .team-cell span, .pl-n, .sq-nm b, .sc-n, .pp-name, .news-t b {
+  overflow-wrap: anywhere;
+}
+.tm .nm, .team-cell span, .pl-n, .sc-n { overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 400px) {
+  /* reclaim width for the two club names, which are what people read */
+  .match { grid-template-columns: 38px minmax(0, 1fr) 56px minmax(0, 1fr); column-gap: 6px; padding: 11px 10px; }
+  .scorers { grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr); column-gap: 6px; }
+  .tm { font-size: 13px; gap: 5px; }
+  .crest, .crest-fb { width: 19px; height: 19px; }
+  .score { font-size: 15px; }
+  .score .box { min-width: 23px; }
+  .st { font-size: 11px; }
+
+  .cmp-row { grid-template-columns: 54px minmax(0, 1fr) 54px; gap: 6px; }
+  .cmp-v { font-size: 12px; }
+  .up-row { grid-template-columns: 54px minmax(0, 1fr) 70px; gap: 8px; }
+  .vrow { grid-template-columns: 56px minmax(0, 1fr) 36px; gap: 7px; }
+  .mv-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .mv-row i { grid-column: 1 / -1; }
+
+  .fgrid { grid-template-columns: 1fr 1fr; }
+  .club-grid { grid-template-columns: 1fr 1fr; }
+  .hist-facts { grid-template-columns: 1fr 1fr; }
+  .stat-cards { grid-template-columns: 1fr 1fr; }
+  .pred-stats { grid-template-columns: 1fr 1fr; }
+
+  .pitch-bar { padding: 9px 11px; font-size: 13px; }
+  .pitch-bar .pf { font-size: 11px; padding: 2px 7px; }
+  .pp { width: 48px; }
+  .pp-name { max-width: 48px; font-size: 9px; }
+  .pp-av { width: 30px; height: 30px; }
+  .pp-rating { min-width: 24px; font-size: 9px; }
+
+  .page-title, h1.page-title { font-size: 19px; }
+  .lg-hero h1, .team-hero h1, .player-hero h1 { font-size: 17px; }
+  .h-score .big { font-size: 28px; }
+  .toolbar { gap: 8px; }
+  .chips { width: 100%; }
+}
+
+/* very small phones and large accessibility text */
+@media (max-width: 340px) {
+  .match { grid-template-columns: 34px minmax(0, 1fr) 50px minmax(0, 1fr); column-gap: 5px; }
+  .scorers { display: none; }              /* scorers wrap badly at this width */
+  .crest, .crest-fb { width: 17px; height: 17px; }
+  .brand-mark { width: 28px; height: 28px; }
+  .fgrid, .club-grid, .hist-facts, .stat-cards, .pred-stats { grid-template-columns: 1fr; }
+}
+
+/* landscape phones: the header and sticky tabs eat most of a short viewport */
+@media (max-height: 460px) and (orientation: landscape) {
+  .tabs { position: static; }
+  .sidebar, .rail { position: static; max-height: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
