@@ -326,7 +326,8 @@ function absorbMeta(lgId, data) {
   const dark = logos.find(l => (l.rel || []).includes('dark')) || logos[0];
   LS.meta[lgId] = Object.assign({}, LS.meta[lgId], {
     logo: dark ? dark.href : '', name: meta.name || (LG_BY_ID[lgId] || {}).name,
-    season: meta.season ? { year: meta.season.year, type: meta.season.type && meta.season.type.id, label: meta.season.displayName } : (LS.meta[lgId] || {}).season,
+    season: meta.season ? { year: meta.season.year, type: meta.season.type && meta.season.type.id, label: meta.season.displayName,
+                            start: meta.season.startDate, end: meta.season.endDate } : (LS.meta[lgId] || {}).season,
   });
   persist();
 }
@@ -736,7 +737,9 @@ function seasonOf(lgId) {
 }
 async function ensureSeason(lgId) {
   let s = seasonOf(lgId);
-  if (s && s.year) return s;
+  // refetch when the cached copy predates season start/end being stored,
+  // otherwise returning visitors keep the old unbounded window
+  if (s && s.year && s.start) return s;
   const sb = await request(`${API}/${lgId}/scoreboard`, { ttl: 900000 });
   absorbMeta(lgId, sb);
   return seasonOf(lgId);
@@ -826,12 +829,24 @@ function renderLeague(lgId, tab) {
 /* Whole season on one page: everything played and everything still to come. */
 async function fillLeagueSchedule(lgId, body) {
   paint(body, `<div class="panel skel section">${Array.from({ length: 8 }, () => '<div class="skel-row"></div>').join('')}</div>`);
+  // A 13-month window straddles two seasons and inflates the count (424 for a
+  // 380-match league), so use the season window the feed itself reports.
+  const season = await ensureSeason(lgId).catch(() => null);
   const now = new Date();
+  const start = season && season.start ? new Date(season.start) : addMonths(now, -8);
+  const end = season && season.end ? new Date(season.end) : addMonths(now, 4);
   const months = [];
-  for (let i = -8; i <= 4; i++) months.push(addMonths(now, i));
+  for (let cur = new Date(start.getFullYear(), start.getMonth(), 1); cur <= end && months.length < 15; cur = addMonths(cur, 1)) {
+    months.push(new Date(cur));
+  }
   const all = new Map();
   await Promise.all(months.map(async m => {
-    try { (await loadMonth(lgId, m)).forEach(e => all.set(e.id, e)); } catch (err) { /* empty month */ }
+    try {
+      (await loadMonth(lgId, m)).forEach(e => {
+        const d = new Date(e.date);
+        if (d >= start && d <= end) all.set(e.id, e);
+      });
+    } catch (err) { /* empty month */ }
   }));
   if (S.route.name !== 'league' || S.route.lg !== lgId) return;
   const events = [...all.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -856,8 +871,8 @@ async function fillLeagueSchedule(lgId, body) {
 
   paint(body, `
     <section class="panel section sched-head">
-      <div class="card-title"><span class="label">Full season</span>
-        <span class="label">${played.length} played · ${upcoming.length} to play</span></div>
+      <div class="card-title"><span class="label">${esc((season && season.label) || 'Full season')}</span>
+        <span class="label">${events.length} matches · ${played.length} played · ${upcoming.length} to play</span></div>
       <div class="chips sched-chips">
         ${[['all', 'Everything', events.length], ['played', 'Played', played.length], ['upcoming', 'To come', upcoming.length]]
           .map(([id, label, n]) => `<button class="chip${filter === id ? ' active' : ''}" data-sched="${id}">${label}<span class="n">${n}</span></button>`).join('')}
