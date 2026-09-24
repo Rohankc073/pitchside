@@ -264,6 +264,99 @@ t('clubs list falls back to the table, then to fixtures', async () => {
   });
 });
 
+
+/* ---------- club honours parsing (Wikipedia wikitext) ---------- */
+function loadParseHonours() {
+  const store = {};
+  global.localStorage = { getItem: k => store[k] || null, setItem: () => {} };
+  global.document = { addEventListener() {}, getElementById() { return null; } };
+  global.window = { Predict: P, PS: { request: async () => ({}), esc: x => x, paint: () => {} } };
+  eval(fs.readFileSync(path.join(__dirname, 'predict-ui.js'), 'utf8'));
+  return global.window.PredictUI.parseHonours;
+}
+
+t('honours parser reads the wikitable layout', () => {
+  const parse = loadParseHonours();
+  const wt = [
+    '==Honours==',
+    '{| class="wikitable"',
+    '! scope="row" |[[Football League First Division|First Division]]/[[Premier League]]',
+    '| 14',
+    '| align="left" |[[1930-31 in English football|1930-31]], [[2003-04 FA Premier League|2003-04]]',
+    '|-',
+    '! scope="row" |[[FA Cup]]',
+    "|style=\"background-color:gold\"| '''14'''",
+    '| align="left" |[[1930 FA Cup Final|1929-30]], [[2020 FA Cup Final|2019-20]]',
+    '|}',
+  ].join('\n');
+  const out = parse(wt);
+  eq(out.length, 2, 'two competitions');
+  eq(out[0].count, 14, 'plain-number count must be read, not just bold ones');
+  ok(out.some(h => /FA Cup/.test(h.name)), 'FA Cup present');
+  ok(out.some(h => h.seasons.includes(2019)), 'seasons captured');
+});
+
+t('honours parser reads the bullet-list layout', () => {
+  const parse = loadParseHonours();
+  const wt = [
+    '== Honours ==',
+    '=== League ===',
+    "* '''[[Serie B]]'''",
+    "** '''Winners:''' [[1948-49 Serie B|1948-49]], [[1979-80 Serie B|1979-80]], [[2001-02 Serie B|2001-02]]",
+    "** ''Runners-up:'' [[1974-75 Serie B|1974-75]], [[2023-24 Serie B|2023-24]]",
+    "* '''[[Serie D]]'''",
+    "** '''Winners:''' [[2007-08 Serie D|2007-08]]",
+  ].join('\n');
+  const out = parse(wt);
+  ok(out.length >= 2, 'both competitions found');
+  const serieB = out.find(h => /Serie B/.test(h.name));
+  ok(serieB, 'Serie B present');
+  eq(serieB.count, 3, 'counts winners only');
+});
+
+t('honours parser ignores runners-up and play-offs', () => {
+  const parse = loadParseHonours();
+  const wt = [
+    '== Honours ==',
+    "* '''[[EFL Championship]]'''",
+    "** ''Runners-up:'' [[2016-17 EFL Championship|2016-17]]",
+    "** ''Play-off winners:'' [[2014-15 Lega Pro|2014-15]]",
+  ].join('\n');
+  const out = parse(wt);
+  eq(out.length, 0, 'a runner-up medal is not a trophy');
+});
+
+t('honours parser survives a page with no honours', () => {
+  const parse = loadParseHonours();
+  eq(parse('').length, 0, 'empty input');
+  eq(parse('==Honours==\nThe club has never won a major trophy.').length, 0, 'prose only');
+});
+
+
+/* ---------- module loading ----------
+   A dangling cross-file reference once threw at load time, leaving
+   window.PredictUI undefined and every prediction feature silently dead,
+   because app.js guards with "if (window.PredictUI)". This pins it. */
+t('browser modules load without throwing', () => {
+  const store = {};
+  global.localStorage = { getItem: k => store[k] || null, setItem: () => {}, removeItem: () => {} };
+  global.document = { addEventListener() {}, getElementById() { return null; }, querySelector() { return null; }, createElement() { return { style: {}, classList: { add() {} }, setAttribute() {}, appendChild() {} }; }, body: { appendChild() {} } };
+  global.window = { Predict: P, PS: { request: async () => ({}), esc: x => x, paint: () => {}, photoOf: () => '', fetchPhotos: async () => {} } };
+  eval(fs.readFileSync(path.join(__dirname, 'predict-ui.js'), 'utf8'));
+  ok(global.window.PredictUI, 'window.PredictUI must exist after load');
+  ['renderMatchPrediction', 'renderHub', 'loadRatings', 'renderProbableXI', 'renderClubHistory', 'parseHonours']
+    .forEach(fn => ok(typeof global.window.PredictUI[fn] === 'function', fn + ' must be exported'));
+});
+
+t('predict-ui does not reach into app.js internals', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'predict-ui.js'), 'utf8');
+  ['photoOf', 'fetchPhotos', 'clubSummary', 'getClubDetail'].forEach(name => {
+    const bare = new RegExp('(^|[^.\\w])' + name + '\\s*[,(]', 'm');
+    const declared = new RegExp('(const|let|function|async function)\\s+' + name);
+    if (bare.test(ui) && !declared.test(ui)) throw new Error(name + ' is used but lives in app.js — go through window.PS');
+  });
+});
+
 /* ---------- output ---------- */
 (async () => {
   // allow the one async test above to settle

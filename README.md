@@ -150,6 +150,15 @@ A service worker caches the app shell and the most recent API responses, so the 
 instantly on repeat visits, survives a dropped connection by showing the last known data,
 and can be installed to a home screen.
 
+### Club history
+
+Each club page opens with a trophy cabinet, founding year, first and most recent title,
+and a bar per decade showing when the club actually won things. Honours are parsed from
+the Honours section of the Wikipedia article, which appears in two layouts across clubs
+(a wikitable and a nested bullet list); both are handled, and runners-up and play-off
+lines are excluded because they are not titles. Founding dates come from Wikidata.
+Everything is cached permanently, since a 1953 title does not change.
+
 ## Data sources
 
 - **Match data**: ESPN's public soccer feeds (`site.api.espn.com`,

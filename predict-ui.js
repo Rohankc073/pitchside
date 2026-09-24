@@ -306,7 +306,6 @@
 
   window.PredictUI = {
     ST, persist, ratingsFor, getTraining, predictFixture, absencesFor,
-    photoOf, fetchPhotosFor: fetchPhotos,
     recordPrediction, recordMove, settle, ledgerStats, pct, pct1,
   };
 })();
@@ -974,8 +973,15 @@
     } catch (e) { /* storage full or unavailable */ }
   }
 
+  // photos and their cache live in app.js; reach them through the exported API
   U.photoFor = name => {
-    try { return U.photoOf ? U.photoOf(name) : ''; } catch (e) { return ''; }
+    const A = ps();
+    try { return (A && A.photoOf) ? A.photoOf(name) : ''; } catch (e) { return ''; }
+  };
+  U.fetchPhotosFor = names => {
+    const A = ps();
+    try { return (A && A.fetchPhotos) ? A.fetchPhotos(names) : Promise.resolve(); }
+    catch (e) { return Promise.resolve(); }
   };
   U.cachedRatings = matchId => U.ST.ratings[String(matchId)] || null;
 
@@ -1070,5 +1076,197 @@
       A.paint(host, `<div class="card-title"><span class="label">Line-ups</span></div>
         <div class="note">Line-ups are published about an hour before kick-off.</div>`);
     }
+  };
+})();
+
+/* ============================================================
+   Club history: trophies, eras, founding
+   Sources: Wikipedia's Honours section (parsed) and Wikidata
+   (founding date). Both CORS-open and cached permanently — a club's
+   1953 title is not going to change.
+   ============================================================ */
+(function () {
+  const U = window.PredictUI;
+  const ps = () => window.PS;
+  const WIKI = 'https://en.wikipedia.org/w/api.php';
+  const WIKIDATA = 'https://www.wikidata.org/w/api.php';
+
+  U.ST.history = U.ST.history || (function () {
+    try { return JSON.parse(localStorage.getItem('pitchside.history') || '{}'); } catch (e) { return {}; }
+  })();
+  function saveHistory() {
+    try {
+      const keys = Object.keys(U.ST.history);
+      if (keys.length > 60) keys.slice(0, keys.length - 60).forEach(k => delete U.ST.history[k]);
+      localStorage.setItem('pitchside.history', JSON.stringify(U.ST.history));
+    } catch (e) { /* storage unavailable */ }
+  }
+
+  /* Wikipedia writes honours two ways and both are common:
+       table — ! scope="row" |[[FA Cup]] / | '''14''' (or plain | 14) / | seasons
+       list  — * '''[[Serie B]]''' / ** '''Winners:''' 1948-49, 1979-80
+     Runners-up and play-off lines are excluded: they are not titles. */
+  function parseHonours(wikitext) {
+    if (!wikitext) return [];
+    const out = [];
+    const clean = s => String(s).replace(/<ref[\s\S]*?(\/>|<\/ref>)/g, '').replace(/\{\{[^{}]*\}\}/g, '').replace(/'''?/g, '').trim();
+    const linkName = s => {
+      const m = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/.exec(s);
+      if (m) return ((m[2] || m[1]) || '').replace(/^List of\s+/i, '').trim();
+      return clean(s).replace(/^[*!|=\s]+|[*!|=\s]+$/g, '').trim();
+    };
+    const yearsIn = s => [...new Set([...String(s).matchAll(/\b(1[89]\d{2}|20\d{2})\b/g)].map(m => +m[1]))].sort((a, b) => a - b);
+    const add = (name, count, seasons) => {
+      const n = clean(name).replace(/\s*\(level \d+\)\s*/i, '').trim();
+      if (!n || n.length < 3 || n.length > 60 || !count) return;
+      if (/runners?-?up|play-?off|record|statistic|season|see also/i.test(n)) return;
+      out.push({ name: n, count, seasons: seasons || [] });
+    };
+
+    const lines = wikitext.split('\n');
+    let tableRow = null, listComp = null;
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (/^!/.test(line) && /\[\[/.test(line)) { tableRow = { name: linkName(line), count: null }; continue; }
+      if (tableRow) {
+        if (tableRow.count == null && /^\|/.test(line)) {
+          const bare = clean(line.replace(/^\|/, '').split('|').pop());
+          if (/^\d{1,3}$/.test(bare)) { tableRow.count = +bare; continue; }
+        }
+        if (tableRow.count != null) { add(tableRow.name, tableRow.count, yearsIn(line)); tableRow = null; continue; }
+        if (/^\|-/.test(line)) tableRow = null;
+      }
+      const bullets = /^(\*+)\s*(.*)$/.exec(line);
+      if (!bullets) continue;
+      const body = bullets[2];
+      const winner = /^'*(?:Winners?|Champions?)'*\s*:?\s*(?:\((\d+)\))?\s*[:–-]?\s*(.*)$/i.exec(clean(body));
+      const skip = /runners?-?up|play-?off|shared|finalist/i.test(clean(body).slice(0, 24));
+      if (winner && !skip) {
+        const seasons = yearsIn(body);
+        if (listComp) add(listComp, winner[1] ? +winner[1] : seasons.length, seasons);
+        continue;
+      }
+      if (/\[\[/.test(body) && !/Winners?|Champions?|Runners?-?up/i.test(clean(body))) listComp = linkName(body);
+    }
+    const byName = new Map();
+    out.forEach(h => {
+      const k = h.name.toLowerCase();
+      if (!byName.has(k) || byName.get(k).count < h.count) byName.set(k, h);
+    });
+    return [...byName.values()].sort((a, b) => b.count - a.count);
+  }
+
+  async function wikiHonours(title) {
+    const A = ps();
+    const secs = await A.request(`${WIKI}?action=parse&page=${encodeURIComponent(title)}&prop=sections&format=json&origin=*`, { ttl: 30 * 86400000 });
+    const target = (((secs.parse || {}).sections) || []).find(s => /^(honours|honors|trophies|achievements)$/i.test(String(s.line).trim()));
+    if (!target) return [];
+    const body = await A.request(`${WIKI}?action=parse&page=${encodeURIComponent(title)}&section=${target.index}&prop=wikitext&format=json&origin=*`, { ttl: 30 * 86400000 });
+    return parseHonours((((body.parse || {}).wikitext) || {})['*'] || '');
+  }
+
+  async function wikidataFacts(title) {
+    const A = ps();
+    try {
+      const d = await A.request(`${WIKIDATA}?action=wbgetentities&sites=enwiki&titles=${encodeURIComponent(title)}&props=claims&languages=en&format=json&origin=*`, { ttl: 30 * 86400000 });
+      const ent = Object.keys(d.entities || {}).map(k => d.entities[k])[0];
+      const claims = (ent && ent.claims) || {};
+      const time = ((((claims.P571 || [])[0] || {}).mainsnak || {}).datavalue || {}).value;
+      const founded = time && time.time ? parseInt(String(time.time).replace(/^\+/, ''), 10) : null;
+      return { founded: founded && founded > 1700 && founded < 2100 ? founded : null };
+    } catch (err) { return { founded: null }; }
+  }
+
+  U.parseHonours = parseHonours;
+
+  U.clubHistory = async function (clubName) {
+    const A = ps();
+    const key = String(clubName || '').toLowerCase();
+    if (!key || key.length < 3) return null;
+    if (U.ST.history[key]) return U.ST.history[key];
+    const summary = await (A.clubSummary ? A.clubSummary(clubName) : Promise.resolve(null)).catch(() => null);
+    const title = (summary && summary.title) || clubName;
+    const [honours, facts] = await Promise.all([
+      wikiHonours(title).catch(() => []),
+      wikidataFacts(title).catch(() => ({ founded: null })),
+    ]);
+    const seasons = honours.reduce((a, h) => a.concat(h.seasons), []).sort((a, b) => a - b);
+    const decades = {};
+    honours.forEach(h => h.seasons.forEach(y => {
+      const d = Math.floor(y / 10) * 10;
+      decades[d] = (decades[d] || 0) + 1;
+    }));
+    const record = {
+      title,
+      founded: facts.founded,
+      honours,
+      total: honours.reduce((s, h) => s + h.count, 0),
+      first: seasons[0] || null,
+      latest: seasons[seasons.length - 1] || null,
+      decades,
+      extract: (summary && summary.extract) || '',
+      fetched: Date.now(),
+    };
+    U.ST.history[key] = record;
+    saveHistory();
+    return record;
+  };
+
+  U.renderClubHistory = async function (host, team) {
+    const A = ps();
+    if (!host) return;
+    A.paint(host, `<div class="card-title"><span class="label">History &amp; honours</span></div>
+      <div class="note">Looking up the trophy cabinet…</div>`);
+    let h;
+    try { h = await U.clubHistory(team.full || team.name); } catch (err) { h = null; }
+    if (!host.isConnected) return;
+    if (!h || (!h.total && !h.founded)) { host.remove(); return; }
+
+    const nowYear = new Date().getFullYear();
+    const top = h.honours.slice(0, 6);
+    const max = top.length ? top[0].count : 1;
+    const decades = Object.keys(h.decades).map(Number).sort((a, b) => a - b);
+    const dMax = decades.reduce((m, d) => Math.max(m, h.decades[d]), 0) || 1;
+    const bestDecade = decades.slice().sort((a, b) => h.decades[b] - h.decades[a])[0];
+    const gap = h.latest ? nowYear - h.latest : null;
+
+    const facts = [
+      h.founded ? ['Founded', h.founded] : null,
+      h.total ? ['Trophies', h.total] : null,
+      h.first ? ['First won', h.first] : null,
+      h.latest ? ['Most recent', h.latest] : null,
+    ].filter(Boolean);
+
+    A.paint(host, `
+      <div class="card-title"><span class="label">History &amp; honours</span>
+        ${h.total ? `<span class="label">${h.total} trophies</span>` : ''}</div>
+
+      ${facts.length ? `<div class="hist-facts">${facts.map(([k, v]) =>
+        `<div><b>${A.esc(v)}</b><span>${k}</span></div>`).join('')}</div>` : ''}
+
+      ${top.length ? `<div class="viz" style="padding:16px 18px 4px">
+        <div class="viz-head"><b>Trophy cabinet</b><span>most-won competitions</span></div>
+        ${top.map(t => `<div class="vrow">
+          <span class="vlab" title="${A.esc(t.name)}">${A.esc(t.name)}</span>
+          <span class="vtrack"><i class="h" style="width:${((t.count / max) * 100).toFixed(1)}%"></i></span>
+          <span class="vval">${t.count}</span>
+          <span class="vwho">${t.seasons.length ? 'last ' + t.seasons[t.seasons.length - 1] : ''}</span>
+        </div>`).join('')}
+      </div>` : ''}
+
+      ${decades.length > 1 ? `<div class="viz" style="padding:8px 18px 4px">
+        <div class="viz-head"><b>Golden eras</b><span>trophies won each decade</span></div>
+        <div class="decades">${decades.map(d => `<div class="dec" title="${h.decades[d]} in the ${d}s">
+          <span class="dec-bar" style="height:${Math.max(6, (h.decades[d] / dMax) * 100)}%"></span>
+          <span class="dec-n">${h.decades[d]}</span>
+          <span class="dec-l">${String(d).slice(2)}s</span></div>`).join('')}</div>
+        ${bestDecade != null ? `<p class="viz-note">Their best decade was the <b>${bestDecade}s</b>,
+          with <b>${h.decades[bestDecade]}</b> trophies.${gap != null && gap > 3 ? ` It has been <b>${gap} years</b> since the last one.` : ''}</p>` : ''}
+      </div>` : ''}
+
+      ${h.extract ? `<p class="club-extract">${A.esc(h.extract)}</p>` : ''}
+      <p class="fine">Honours parsed from Wikipedia and founding dates from Wikidata, so they follow whatever those
+        pages say — including minor and regional competitions where a club lists them.</p>`);
   };
 })();

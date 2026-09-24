@@ -1187,10 +1187,16 @@ async function fillTeamOverview(lgId, teamId, body, t) {
       }).join('')}</div>`
       : '<div class="note">No league table includes this club right now.</div>'}
   </section>
+  <section class="panel section" id="clubHistory"></section>
   <section class="panel section" id="clubScorers"></section>
   <section class="panel section" id="clubInfo"></section>`);
   fillClubInfo(lgId, teamId, t);
   fillClubScorers(lgId, teamId);
+  if (window.PredictUI && window.PredictUI.renderClubHistory) {
+    window.PredictUI.renderClubHistory($('#clubHistory'), t);
+  } else {
+    const hh = $('#clubHistory'); if (hh) hh.remove();
+  }
 }
 
 /* club's own scoring charts */
@@ -2378,7 +2384,7 @@ function renderSearchResults(q) {
 window.PS = {
   API, API2, CORE, WEB, LEAGUES, LG_BY_ID,
   request, loadMonth, statusOf, normTeam, normEvent, lgName,
-  ensureSeason, getStandings, getPerson,
+  ensureSeason, getStandings, getPerson, clubSummary, getClubDetail, photoOf, fetchPhotos,
   paint, esc, ICON, crest, lgLogo, avatar,
   fmtTime, fmtDayShort, fmtDayLong, ymd, addDays, addMonths, startOfDay, parseYmd,
   orderedLeagues, dayMap, S,
