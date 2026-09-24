@@ -347,22 +347,6 @@
         ${a.share > 0.01 ? `<em>${Math.round(a.share * 100)}% of goals</em>` : ''}</span>`).join('')}</div>`;
   }
 
-  function movementChart(matchId) {
-    const pts = U.ST.moves[String(matchId)] || [];
-    if (pts.length < 3) return '';
-    const W = 320, H = 70;
-    const x = i => (i / (pts.length - 1)) * W;
-    const line = key => pts.map((p, i) => `${x(i).toFixed(1)},${(H - p[key] * H).toFixed(1)}`).join(' ');
-    return `<div class="pred-move">
-      <div class="label">How the model moved</div>
-      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="move-svg" aria-hidden="true">
-        <polyline points="${line('h')}" class="mv h"/>
-        <polyline points="${line('d')}" class="mv d"/>
-        <polyline points="${line('a')}" class="mv a"/>
-      </svg>
-      <div class="move-key"><span class="k h">Home</span><span class="k d">Draw</span><span class="k a">Away</span>
-        <span class="k t">${pts[0].m}' → ${pts[pts.length - 1].m}'</span></div></div>`;
-  }
 
   /* ---------------- analytics building blocks ---------------- */
 
@@ -393,70 +377,108 @@
     </div>`;
   }
 
-  /* scoreline heatmap — the most-likely scorelines at a glance */
-  function heatmapSvg(matrix, ctx, actual) {
+  /* ---------------- plain-language visuals ----------------
+     Deliberately simple: labelled horizontal bars, no axes, no grids, no
+     scatter plots. Every chart says in words what it means, and probabilities
+     are restated as "out of 100 matches" because percentages alone don't land. */
+
+  function scorelineBars(pred, ctx) {
     const A = ps();
-    const { cells, size, max } = P.matrixCells(matrix, 5);
-    const c = 30, pad = 30, W = pad + size * c + 6, H = pad + size * c + 6;
-    const colour = s => s === 'home' ? '61,220,132' : s === 'away' ? '92,200,255' : '150,160,175';
-    return `<svg viewBox="0 0 ${W} ${H}" class="heat-svg" role="img" aria-label="Scoreline probability grid">
-      <text x="${pad + (size * c) / 2}" y="10" class="heat-ax">${A.esc(ctx.away.abbr || ctx.away.name)} goals →</text>
-      <text x="9" y="${pad + (size * c) / 2}" class="heat-ax" transform="rotate(-90 9 ${pad + (size * c) / 2})">${A.esc(ctx.home.abbr || ctx.home.name)} goals →</text>
-      ${Array.from({ length: size }, (_, i) => `<text x="${pad + i * c + c / 2}" y="${pad - 6}" class="heat-n">${i}</text>`).join('')}
-      ${Array.from({ length: size }, (_, i) => `<text x="${pad - 8}" y="${pad + i * c + c / 2 + 4}" class="heat-n">${i}</text>`).join('')}
-      ${cells.map(cl => {
-        const isActual = actual && actual.h === cl.h && actual.a === cl.a;
-        return `<g><rect x="${pad + cl.a * c}" y="${pad + cl.h * c}" width="${c - 2}" height="${c - 2}" rx="4"
-          fill="rgba(${colour(cl.side)},${(0.08 + cl.rel * 0.85).toFixed(3)})"
-          ${isActual ? 'class="heat-actual"' : ''}><title>${cl.h}–${cl.a}: ${(cl.p * 100).toFixed(1)}%</title></rect>
-          ${cl.rel > 0.45 ? `<text x="${pad + cl.a * c + (c - 2) / 2}" y="${pad + cl.h * c + (c - 2) / 2 + 4}" class="heat-p">${Math.round(cl.p * 100)}</text>` : ''}
-        </g>`;
-      }).join('')}
-    </svg>`;
+    const top = (pred.topScores || []).slice(0, 6);
+    if (!top.length) return '';
+    const max = top[0].p || 1;
+    const side = s => s.h > s.a ? 'h' : s.h === s.a ? 'd' : 'a';
+    const who = s => s.h > s.a ? A.esc(ctx.home.name) : s.h === s.a ? 'draw' : A.esc(ctx.away.name);
+    return `<div class="viz">
+      <div class="viz-head"><b>Most likely final scores</b>
+        <span>${A.esc(ctx.home.name)} score shown first</span></div>
+      ${top.map(s => `<div class="vrow">
+        <span class="vlab score">${s.h}–${s.a}</span>
+        <span class="vtrack"><i class="${side(s)}" style="width:${((s.p / max) * 100).toFixed(1)}%"></i></span>
+        <span class="vval">${(s.p * 100).toFixed(1)}%</span>
+        <span class="vwho">${who(s)}</span>
+      </div>`).join('')}
+      <p class="viz-note">Read it like this: if this match were played 100 times,
+        about <b>${Math.round(top[0].p * 100)}</b> of them would end <b>${top[0].h}–${top[0].a}</b>.</p>
+    </div>`;
   }
 
-  /* total goals distribution */
-  function goalsSvg(matrix) {
-    const dist = P.goalsDistribution(matrix, 6);
+  function goalsBars(matrix) {
+    const dist = P.goalsDistribution(matrix, 5);
     const max = Math.max.apply(null, dist) || 1;
-    const W = 260, H = 110, bw = W / dist.length;
-    return `<svg viewBox="0 0 ${W} ${H}" class="gd-svg" role="img" aria-label="Total goals distribution">
-      ${dist.map((p, i) => {
-        const h = (p / max) * (H - 30);
-        return `<g><rect x="${i * bw + 5}" y="${H - 20 - h}" width="${bw - 10}" height="${h}" rx="3" class="gd-bar ${i > 2 ? 'over' : 'under'}">
-          <title>${i === 6 ? '6+' : i} goals: ${(p * 100).toFixed(1)}%</title></rect>
-          <text x="${i * bw + bw / 2}" y="${H - 6}" class="gd-x">${i === 6 ? '6+' : i}</text>
-          ${p > 0.06 ? `<text x="${i * bw + bw / 2}" y="${H - 25 - h}" class="gd-v">${Math.round(p * 100)}</text>` : ''}
-        </g>`;
-      }).join('')}
-    </svg>`;
+    const best = dist.indexOf(max);
+    const labels = ['0 goals', '1 goal', '2 goals', '3 goals', '4 goals', '5 or more'];
+    return `<div class="viz">
+      <div class="viz-head"><b>How many goals in total?</b><span>both teams combined</span></div>
+      ${dist.map((p, i) => `<div class="vrow">
+        <span class="vlab">${labels[i]}</span>
+        <span class="vtrack"><i class="${i === best ? 'best' : 'g'}" style="width:${((p / max) * 100).toFixed(1)}%"></i></span>
+        <span class="vval">${Math.round(p * 100)}%</span>
+        ${i === best ? '<span class="vwho">most likely</span>' : '<span class="vwho"></span>'}
+      </div>`).join('')}
+      <p class="viz-note">${[
+        "A goalless draw is the single most likely outcome.",
+        "A <b>one-goal</b> match is the single most likely outcome.",
+        "<b>Two goals</b> in total is the single most likely outcome.",
+        "<b>Three goals</b> in total is the single most likely outcome.",
+        "<b>Four goals</b> in total is the single most likely outcome.",
+        "A <b>high-scoring</b> match is the single most likely outcome.",
+      ][best]}</p>
+    </div>`;
   }
 
-  /* where both clubs sit among every club in the competition */
-  function scatterSvg(ranks, ctx) {
+  /* replaces the old scatter plot: a plain "Nth best of M" bar per club */
+  function strengthRanks(ranks, ctx) {
     const A = ps();
-    const all = (ranks && ranks.__all) || [];
-    if (all.length < 4) return '';
-    const W = 300, H = 210, pad = 34;
-    const ax = all.map(r => r.attack), dx = all.map(r => r.defence);
-    const minA = Math.min.apply(null, ax), maxA = Math.max.apply(null, ax);
-    const minD = Math.min.apply(null, dx), maxD = Math.max.apply(null, dx);
-    const sx = v => pad + ((v - minA) / ((maxA - minA) || 1)) * (W - pad - 14);
-    const sy = v => pad + ((v - minD) / ((maxD - minD) || 1)) * (H - pad - 26); // higher = concedes more
-    const dot = (r) => {
-      const isH = String(r.id) === String(ctx.home.id), isA = String(r.id) === String(ctx.away.id);
-      if (!isH && !isA) return `<circle cx="${sx(r.attack)}" cy="${sy(r.defence)}" r="3" class="sc-dot"/>`;
-      const name = isH ? (ctx.home.abbr || ctx.home.name) : (ctx.away.abbr || ctx.away.name);
-      return `<g><circle cx="${sx(r.attack)}" cy="${sy(r.defence)}" r="6" class="sc-dot ${isH ? 'h' : 'a'}"/>
-        <text x="${sx(r.attack)}" y="${sy(r.defence) - 10}" class="sc-lbl ${isH ? 'h' : 'a'}">${A.esc(name)}</text></g>`;
+    const hr = ranks[String(ctx.home.id)], ar = ranks[String(ctx.away.id)];
+    if (!hr || !ar) return '';
+    const place = (rank, of) => `${ord(rank)} of ${of}`;
+    const share = (rank, of) => (((of - rank + 1) / of) * 100).toFixed(1);
+    const row = (team, rank, of, cls) => `<div class="vrow">
+      <span class="vlab team">${A.esc(team)}</span>
+      <span class="vtrack"><i class="${cls}" style="width:${share(rank, of)}%"></i></span>
+      <span class="vval rank">${place(rank, of)}</span>
+    </div>`;
+    const better = (a, b, nameA, nameB) => a < b ? nameA : b < a ? nameB : null;
+    const atkWin = better(hr.attackRank, ar.attackRank, ctx.home.name, ctx.away.name);
+    const defWin = better(hr.defenceRank, ar.defenceRank, ctx.home.name, ctx.away.name);
+    return `<div class="viz">
+      <div class="viz-head"><b>How good is each team?</b><span>ranked against every club in this competition</span></div>
+      <div class="viz-sub">Scoring goals — longer is better</div>
+      ${row(ctx.home.name, hr.attackRank, hr.of, 'h')}
+      ${row(ctx.away.name, ar.attackRank, ar.of, 'a')}
+      <div class="viz-sub">Stopping goals — longer is better</div>
+      ${row(ctx.home.name, hr.defenceRank, hr.of, 'h')}
+      ${row(ctx.away.name, ar.defenceRank, ar.of, 'a')}
+      <p class="viz-note">${
+        atkWin && defWin && atkWin === defWin
+          ? `<b>${A.esc(atkWin)}</b> rank higher at both ends of the pitch — better at scoring and better at stopping goals.`
+          : `${atkWin ? `<b>${A.esc(atkWin)}</b> are the better attacking side` : 'Both attacks rank alike'}${defWin ? `, while <b>${A.esc(defWin)}</b> have the stronger defence` : ''}.`
+      }</p>
+    </div>`;
+  }
+
+  /* live only: how the chances have shifted during the match */
+  function movementBars(matchId, ctx, pred) {
+    const A = ps();
+    const pts = U.ST.moves[String(matchId)] || [];
+    if (pts.length < 2) return '';
+    const first = pts[0], last = pts[pts.length - 1];
+    const delta = (a, b) => {
+      const d = Math.round((b - a) * 100);
+      return d === 0 ? 'unchanged' : d > 0 ? `up ${d} points` : `down ${Math.abs(d)} points`;
     };
-    return `<svg viewBox="0 0 ${W} ${H}" class="sc-svg" role="img" aria-label="Attack and defence ratings across the competition">
-      <line x1="${pad}" y1="${H - 22}" x2="${W - 6}" y2="${H - 22}" class="sc-axis"/>
-      <line x1="${pad}" y1="${pad - 10}" x2="${pad}" y2="${H - 22}" class="sc-axis"/>
-      <text x="${W - 6}" y="${H - 8}" class="sc-ax" text-anchor="end">stronger attack →</text>
-      <text x="6" y="${pad - 16}" class="sc-ax">← concedes more</text>
-      ${all.map(dot).join('')}
-    </svg>`;
+    return `<div class="viz">
+      <div class="viz-head"><b>How the chances have moved</b><span>since the ${first.m}th minute</span></div>
+      <div class="mv-rows">
+        <div class="mv-row"><span>${A.esc(ctx.home.name)}</span>
+          <b>${Math.round(first.h * 100)}% → ${Math.round(last.h * 100)}%</b><i>${delta(first.h, last.h)}</i></div>
+        <div class="mv-row"><span>Draw</span>
+          <b>${Math.round(first.d * 100)}% → ${Math.round(last.d * 100)}%</b><i>${delta(first.d, last.d)}</i></div>
+        <div class="mv-row"><span>${A.esc(ctx.away.name)}</span>
+          <b>${Math.round(first.a * 100)}% → ${Math.round(last.a * 100)}%</b><i>${delta(first.a, last.a)}</i></div>
+      </div>
+    </div>`;
   }
 
   /* plain-English reasoning, generated from the same numbers shown above */
@@ -579,19 +601,16 @@
         · finished ${A.esc(o.verdict.score)} · RPS ${o.verdict.rps.toFixed(3)} against ${o.verdict.rpsUniform.toFixed(3)} for a coin toss</span></div>` : '';
 
     const compare = (hp && ap) ? `<div class="cmp">
-        <div class="cmp-head"><span>${A.esc(ctx.home.name)}</span><i>this season</i><span>${A.esc(ctx.away.name)}</span></div>
+        <div class="viz-head"><b>Season so far</b><span>the stronger number is highlighted</span></div>
+        <div class="cmp-head"><span>${A.esc(ctx.home.name)}</span><i>at home</i><span>${A.esc(ctx.away.name)}</span></div>
         ${cmpRow('Points per game', fmt2(hp.all.ppg), fmt2(ap.all.ppg))}
-        ${cmpRow('Goals scored / game', fmt2(hp.all.gfpg), fmt2(ap.all.gfpg))}
-        ${cmpRow('Conceded / game', fmt2(hp.all.gapg), fmt2(ap.all.gapg), { lowerBetter: true })}
-        ${cmpRow('At home / away', `${hp.home.w}W ${hp.home.d}D ${hp.home.l}L`, `${ap.away.w}W ${ap.away.d}D ${ap.away.l}L`,
+        ${cmpRow('Goals scored per game', fmt2(hp.all.gfpg), fmt2(ap.all.gfpg))}
+        ${cmpRow('Goals let in per game', fmt2(hp.all.gapg), fmt2(ap.all.gapg), { lowerBetter: true })}
+        ${cmpRow('Record at home / away', `${hp.home.w}W ${hp.home.d}D ${hp.home.l}L`, `${ap.away.w}W ${ap.away.d}D ${ap.away.l}L`,
             { hNum: hp.home.ppg, aNum: ap.away.ppg })}
-        ${cmpRow('Clean sheets', `${Math.round(hp.all.csRate * 100)}%`, `${Math.round(ap.all.csRate * 100)}%`,
+        ${cmpRow('Matches without conceding', `${Math.round(hp.all.csRate * 100)}%`, `${Math.round(ap.all.csRate * 100)}%`,
             { hNum: hp.all.csRate, aNum: ap.all.csRate })}
-        ${hr && ar ? cmpRow('Attack rating', `${fmt2(hr.attack)} <small>${ord(hr.attackRank)}</small>`, `${fmt2(ar.attack)} <small>${ord(ar.attackRank)}</small>`,
-            { hNum: hr.attack, aNum: ar.attack }) : ''}
-        ${hr && ar ? cmpRow('Defence rating', `${fmt2(hr.defence)} <small>${ord(hr.defenceRank)}</small>`, `${fmt2(ar.defence)} <small>${ord(ar.defenceRank)}</small>`,
-            { hNum: hr.defence, aNum: ar.defence, lowerBetter: true }) : ''}
-        ${cmpRow('Form (last 6)', `${hp.formPoints}/${hp.formMax} pts`, `${ap.formPoints}/${ap.formMax} pts`,
+        ${cmpRow('Points in last 6 games', `${hp.formPoints} of ${hp.formMax}`, `${ap.formPoints} of ${ap.formMax}`,
             { hNum: hp.formPoints, aNum: ap.formPoints })}
         <div class="cmp-forms">
           <span>${formStrip(hp.recent)}</span><i>recent results</i><span>${formStrip(ap.recent)}</span>
@@ -599,22 +618,18 @@
       </div>` : '';
 
     const charts = matrix ? `<div class="pred-charts">
-        <div class="chart-box"><div class="label">Most likely scorelines</div>${heatmapSvg(matrix, ctx, o.actual)}</div>
-        <div class="chart-box"><div class="label">Total goals in the match</div>${goalsSvg(matrix)}
-          <div class="chart-note">Under 2.5 ${pct(pred.under25)} · Over 2.5 ${pct(pred.over25)} · Both score ${pct(pred.btts)}</div></div>
+        <div class="chart-box">${scorelineBars(pred, ctx)}</div>
+        <div class="chart-box">${goalsBars(matrix)}</div>
       </div>` : '';
 
-    const scatter = (ranks.__all && ranks.__all.length > 3) ? `<div class="chart-box wide">
-        <div class="label">Where both clubs sit in the competition</div>${scatterSvg(ranks, ctx)}
-        <div class="chart-note">Each dot is a club: further right scores more, lower concedes less.</div>
-      </div>` : '';
+    const scatter = (ranks.__all && ranks.__all.length > 3) ? `<div class="chart-box wide">${strengthRanks(ranks, ctx)}</div>` : '';
 
     const players = d.scorers ? `<div class="pred-players">
         ${['home', 'away'].map(side => {
           const s = d.scorers[side] || { goals: [], assists: [] };
           const team = ctx[side];
           if (!s.goals.length && !s.assists.length) return `<div><div class="label">${A.esc(team.name)}</div><div class="chart-note">No scoring charts published yet.</div></div>`;
-          return `<div><div class="label">${A.esc(team.name)} — in front of goal</div>
+          return `<div><div class="viz-head"><b>${A.esc(team.name)} — who has been scoring</b></div>
             ${s.goals.slice(0, 3).map(p => `<a class="pl-row" href="#/player/${A.esc(ctx.lgId)}/${A.esc(p.id)}">
               ${A.avatar({ jersey: p.jersey, name: p.name, flag: p.flag }, 'sm')}
               <span class="pl-n">${A.esc(p.name)}</span><span class="pl-m">${p.apps ? p.apps + ' apps' : ''}</span>
@@ -627,19 +642,20 @@
       </div>` : '';
 
     const xgPanel = (d.xg && (d.xg.home.length || d.xg.away.length)) ? `<div class="pred-xg">
-        <div class="label">Underlying performance — goals against expected goals</div>
+        <div class="viz-head"><b>Are they finishing well?</b><span>goals scored against the quality of chances created</span></div>
         <div class="xg-grid">${['home', 'away'].map(side => {
           const rows = d.xg[side] || [];
           if (!rows.length) return '';
           const g = rows.reduce((s, r) => s + r.goals, 0), x = rows.reduce((s, r) => s + r.xg, 0);
           const diff = g - x;
           return `<div class="xg-col"><b>${A.esc(ctx[side].name)}</b>
-            <span class="xg-sum ${diff >= 0 ? 'over' : 'under'}">${g} scored from ${fmt1(x)} xG
-              <i>${diff >= 0 ? 'clinical' : 'wasteful'} by ${fmt1(Math.abs(diff))}</i></span>
+            <span class="xg-sum ${diff >= 0 ? 'over' : 'under'}">Scored ${g} from chances worth ${fmt1(x)}
+              <i>${diff >= 0 ? `taking chances well (+${fmt1(diff)})` : `missing chances (${fmt1(diff)})`}</i></span>
             ${rows.map(r => `<span class="xg-row"><i>${A.esc(r.opponent || '')}</i>
               <em>${r.goals} <small>/ ${fmt1(r.xg)} xG</small></em></span>`).join('')}</div>`;
         }).join('')}</div>
-        <div class="chart-note">Shown as context only — xG is not fed into the model, because the feed carries it for the current season alone.</div>
+        <div class="viz-note">"Chances worth 1.5" means the shots they had would typically produce 1.5 goals.
+          Shown as background only — it is not used in the prediction.</div>
       </div>` : '';
 
     const factors = [];
@@ -667,7 +683,7 @@
       ${scatter}
       ${players}
       ${xgPanel}
-      ${movementChart(ctx.matchId)}
+      ${live ? movementBars(ctx.matchId, ctx, pred) : ''}
       ${(pred.homeAbsences && pred.homeAbsences.length) || (pred.awayAbsences && pred.awayAbsences.length)
         ? `<div class="pred-abs"><div class="label">Availability</div>${absenceChips(pred.homeAbsences, ctx.home.name)}${absenceChips(pred.awayAbsences, ctx.away.name)}</div>`
         : ''}
