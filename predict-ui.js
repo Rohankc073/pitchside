@@ -306,6 +306,7 @@
 
   window.PredictUI = {
     ST, persist, ratingsFor, getTraining, predictFixture, absencesFor,
+    photoOf, fetchPhotosFor: fetchPhotos,
     recordPrediction, recordMove, settle, ledgerStats, pct, pct1,
   };
 })();
@@ -952,4 +953,122 @@
   U.renderMatchPrediction = renderMatchPrediction;
   U.renderHub = renderHub;
   U.runBacktest = runBacktest;
+})();
+
+/* ============================================================
+   Match ratings + probable line-ups
+   ============================================================ */
+(function () {
+  const U = window.PredictUI;
+  const P = window.Predict;
+  const ps = () => window.PS;
+
+  U.ST.ratings = U.ST.ratings || (function () {
+    try { return JSON.parse(localStorage.getItem('pitchside.playerRatings') || '{}'); } catch (e) { return {}; }
+  })();
+  function saveRatings() {
+    try {
+      const keys = Object.keys(U.ST.ratings);
+      if (keys.length > 120) keys.slice(0, keys.length - 120).forEach(k => delete U.ST.ratings[k]);
+      localStorage.setItem('pitchside.playerRatings', JSON.stringify(U.ST.ratings));
+    } catch (e) { /* storage full or unavailable */ }
+  }
+
+  U.photoFor = name => {
+    try { return U.photoOf ? U.photoOf(name) : ''; } catch (e) { return ''; }
+  };
+  U.cachedRatings = matchId => U.ST.ratings[String(matchId)] || null;
+
+  /* One request per player who featured, cached permanently — a finished
+     match's statistics never change. */
+  U.loadRatings = async function (lgId, matchId, sum) {
+    const key = String(matchId);
+    if (U.ST.ratings[key]) return U.ST.ratings[key];
+    const A = ps();
+    const jobs = [];
+    (sum.rosters || []).forEach(r => {
+      const teamId = r.team && r.team.id;
+      (r.roster || []).forEach(p => {
+        const ath = p.athlete || {};
+        const played = p.starter || p.subbedIn || (p.plays || []).length;
+        if (!played || !ath.id || !teamId) return;
+        jobs.push({ teamId, id: String(ath.id), pos: (p.position && p.position.abbreviation) || '' });
+      });
+    });
+    if (!jobs.length) return null;
+    const out = {};
+    await Promise.all(jobs.map(async job => {
+      try {
+        const st = await A.request(
+          `${A.CORE}/${lgId}/events/${matchId}/competitions/${matchId}/competitors/${job.teamId}/roster/${job.id}/statistics/0?lang=en`,
+          { ttl: 30 * 86400000 });
+        const m = {};
+        ((st.splits && st.splits.categories) || []).forEach(c => (c.stats || []).forEach(x => {
+          m[x.name] = x.value != null ? x.value : x.displayValue;
+        }));
+        const rating = P.playerRating(m, { position: job.pos });
+        if (rating != null) out[job.id] = rating;
+      } catch (err) { /* a missing player just has no rating */ }
+    }));
+    if (!Object.keys(out).length) return null;
+    U.ST.ratings[key] = out;
+    saveRatings();
+    return out;
+  };
+
+  /* Squads are empty until about an hour before kick-off, so show each club's
+     most recent starting XI instead — clearly labelled as unconfirmed. */
+  U.renderProbableXI = async function (host, ctx) {
+    const A = ps();
+    if (!host) return;
+    A.paint(host, `<div class="card-title"><span class="label">Line-ups</span></div>
+      <div class="note">Confirmed line-ups are published about an hour before kick-off. Loading each side's last XI…</div>`);
+    try {
+      const training = await U.getTraining(ctx.lgId);
+      const lastXI = async team => {
+        const games = training.filter(m => String(m.home) === String(team.id) || String(m.away) === String(team.id));
+        const last = games[games.length - 1];
+        if (!last) return null;
+        const sum = await A.request(`${A.API}/${ctx.lgId}/summary?event=${last.id}`, { ttl: 24 * 3600 * 1000 });
+        const r = (sum.rosters || []).find(x => String(x.team && x.team.id) === String(team.id));
+        if (!r) return null;
+        const starters = (r.roster || []).filter(p => p.starter);
+        if (!starters.length) return null;
+        const opp = String(last.home) === String(team.id) ? last.awayName : last.homeName;
+        return { formation: r.formation || '', starters, opp, date: last.date };
+      };
+      const [h, a] = await Promise.all([lastXI(ctx.home).catch(() => null), lastXI(ctx.away).catch(() => null)]);
+      if (!host.isConnected) return;
+      if (!h && !a) {
+        A.paint(host, `<div class="card-title"><span class="label">Line-ups</span></div>
+          <div class="note">Line-ups are published about an hour before kick-off.</div>`);
+        return;
+      }
+      const names = [];
+      [h, a].forEach(x => x && x.starters.forEach(p => names.push((p.athlete || {}).displayName)));
+      await U.fetchPhotosFor(names);
+      const col = (x, team) => {
+        if (!x) return `<div><div class="card-title"><span class="label">${A.esc(team.name)}</span></div>
+          <div class="note">No recent line-up available.</div></div>`;
+        return `<div><div class="card-title"><span class="label">${A.esc(team.name)}</span>
+            <span class="label">${A.esc(x.formation)}</span></div>
+          <div class="pxi-note">Last XI, away to ${A.esc(x.opp || 'their previous match')}</div>
+          ${x.starters.map(p => {
+            const ath = p.athlete || {};
+            return `<a class="bench-row on" href="#/player/${A.esc(ctx.lgId)}/${A.esc(ath.id || '')}">
+              <span class="j">${A.esc(p.jersey || ath.jersey || '')}</span>
+              <span class="n">${A.esc(ath.displayName || '')}</span>
+              <span class="p">${A.esc(((p.position || {}).abbreviation) || '')}</span></a>`;
+          }).join('')}</div>`;
+      };
+      A.paint(host, `<div class="card-title"><span class="label">Probable line-ups</span>
+          <span class="label">not confirmed</span></div>
+        <div class="bench">${col(h, ctx.home)}${col(a, ctx.away)}</div>
+        <p class="fine">These are the most recent starting elevens, not announced teams. Confirmed line-ups appear about
+          an hour before kick-off.</p>`);
+    } catch (err) {
+      A.paint(host, `<div class="card-title"><span class="label">Line-ups</span></div>
+        <div class="note">Line-ups are published about an hour before kick-off.</div>`);
+    }
+  };
 })();

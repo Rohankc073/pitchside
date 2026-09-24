@@ -554,8 +554,63 @@
     return { cells, size: N, max };
   }
 
+
+  /* ---------------- player match rating ----------------
+     ESPN exposes rating fields but leaves them at 0.0 in every league checked,
+     so this computes one from the 146 stats it does publish. It is our number,
+     not an official one, and the UI says so. Deliberately simple and readable:
+     start at 6.0 for turning up, add for end product and duels, subtract for
+     cards and goals conceded, then pull short cameos back toward the mean. */
+  function playerRating(st, opts) {
+    if (!st) return null;
+    const o = opts || {};
+    const num = k => { const v = Number(st[k]); return isFinite(v) ? v : 0; };
+    const mins = num('minutes');
+    if (mins <= 0) return null;
+
+    const pos = String(o.position || '').toUpperCase();
+    const isGk = pos === 'G' || pos === 'GK';
+    const isDef = /^(CD|CB|LB|RB|SW|WB|LWB|RWB|D)/.test(pos);
+
+    let r = 6.0;
+    r += num('totalGoals') * (isGk ? 2.0 : isDef ? 1.4 : 1.1);
+    r += num('goalAssists') * 0.8;
+    r += Math.min(0.4, num('shotsOnTarget') * 0.12);
+    r += Math.min(0.5, (num('expectedGoals') + num('expectedAssists')) * 0.45);
+
+    // passing, judged against a competent 75%
+    if (num('totalPasses') >= 10) r += Math.max(-0.5, Math.min(0.5, (num('passPct') - 0.75) * 2.2));
+
+    // duels, tackles, recoveries
+    if (num('duels') >= 3) r += Math.max(-0.4, Math.min(0.5, (num('duelWinPct') - 0.5) * 1.4));
+    r += Math.min(0.4, (num('effectiveTackles') + num('interceptions')) * 0.07);
+    r += Math.min(0.3, num('ballRecovery') * 0.03);
+    r += Math.min(0.3, num('wonContest') * 0.1);
+
+    // keeping goals out
+    if (isGk) {
+      r += Math.min(0.9, num('saves') * 0.16);
+      r += Math.max(-0.6, Math.min(0.9, num('goalsPrevented') * 1.1));
+      r -= num('goalsConceded') * 0.28;
+      if (num('cleanSheet') > 0) r += 0.6;
+    } else if (isDef) {
+      if (num('cleanSheet') > 0 && mins >= 60) r += 0.45;
+      r -= num('goalsConceded') * 0.12;
+    }
+
+    r -= num('yellowCards') * 0.3;
+    r -= num('redCards') * 1.5;
+    r -= num('ownGoals') * 1.2;
+
+    // a ten-minute cameo shouldn't swing to the extremes
+    if (mins < 60) r = 6.0 + (r - 6.0) * Math.max(0.35, mins / 60);
+
+    return Math.max(3.0, Math.min(10, Math.round(r * 10) / 10));
+  }
+
   return {
     DEFAULTS, fitRatings, predict, inPlay, scoreMatrix, summarise,
+    playerRating,
     teamProfile, leagueRanks, goalsDistribution, matrixCells,
     availabilityFactor, SIGNAL_WEIGHT,
     rps, brier, logLoss, outcomeOf, pickOf,

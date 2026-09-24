@@ -24,7 +24,7 @@ possession and comparison bars; line-ups on a pitch with player portraits, goals
 assists; full player performance tables; live commentary; head-to-head history;
 highlights; match reports; and the league table with both clubs highlighted.
 
-**Leagues** — fixtures and results by month, full tables with qualification zones and
+**Leagues** — a full-season schedule on one page (played and upcoming, filterable, with a jump to the next fixture), fixtures and results by month, full tables with qualification zones and
 groups, season top scorers and assists, a club directory, and a news feed.
 
 **Clubs** — recent form, upcoming fixtures, position in every competition entered,
@@ -69,6 +69,19 @@ Run it yourself: `node backtest.js eng.1 202508 10`.
 RPS (ranked probability score, lower is better) is the standard ordered metric for 1X2.
 For reference, betting-market odds score around 0.19 — the gap is the value of
 information this model does not have.
+
+### Player ratings
+
+ESPN exposes rating fields but leaves them at 0.0 in every league checked, so Pitchside
+computes its own from the 146 per-player statistics the feed does publish: goals and
+assists, shots, expected goals, pass accuracy, duels won, tackles, interceptions,
+recoveries, saves, goals prevented, clean sheets and cards, with short cameos pulled back
+toward the mean. Ratings are labelled in the UI as ours, not official ones.
+
+The line-ups tab draws both starting elevens on a vertical pitch with portraits, shirt
+numbers, goal/card/substitution markers and a colour-coded rating badge per player. Before
+kick-off, when squads are still empty, each side's most recent starting eleven is shown
+instead, labelled as probable rather than confirmed.
 
 ### Live predictions
 

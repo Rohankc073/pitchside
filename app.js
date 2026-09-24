@@ -802,7 +802,7 @@ function renderLeague(lgId, tab) {
   if (!lg) { location.hash = '#/'; return; }
   S.leagueTab = tab || 'fixtures';
   const season = (seasonOf(lgId) || {}).label || '';
-  const tabs = [['fixtures', 'Fixtures'], ['results', 'Results'], ['table', 'Table'], ['stats', 'Stats'], ['teams', 'Clubs'], ['news', 'News']];
+  const tabs = [['schedule', 'Schedule'], ['fixtures', 'Fixtures'], ['results', 'Results'], ['table', 'Table'], ['stats', 'Stats'], ['teams', 'Clubs'], ['news', 'News']];
   paint($('#main'), `
     <a class="back" href="#/">${ICON.chevL} All scores</a>
     <section class="panel lg-hero">
@@ -820,8 +820,59 @@ function renderLeague(lgId, tab) {
   if (S.leagueTab === 'stats') return fillLeagueStats(lgId, body);
   if (S.leagueTab === 'teams') return fillLeagueTeams(lgId, body);
   if (S.leagueTab === 'news') return fillLeagueNews(lgId, body);
+  if (S.leagueTab === 'schedule') return fillLeagueSchedule(lgId, body);
   return fillLeagueMatches(lgId, body, S.leagueTab);
 }
+/* Whole season on one page: everything played and everything still to come. */
+async function fillLeagueSchedule(lgId, body) {
+  paint(body, `<div class="panel skel section">${Array.from({ length: 8 }, () => '<div class="skel-row"></div>').join('')}</div>`);
+  const now = new Date();
+  const months = [];
+  for (let i = -8; i <= 4; i++) months.push(addMonths(now, i));
+  const all = new Map();
+  await Promise.all(months.map(async m => {
+    try { (await loadMonth(lgId, m)).forEach(e => all.set(e.id, e)); } catch (err) { /* empty month */ }
+  }));
+  if (S.route.name !== 'league' || S.route.lg !== lgId) return;
+  const events = [...all.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (!events.length) {
+    paint(body, `<section class="panel empty"><div class="empty-ic">${ICON.cal}</div>
+      <h3>No schedule published</h3><p>This competition has no fixtures in the feed yet.</p></section>`);
+    return;
+  }
+  const played = events.filter(e => statusOf(e).kind === 'post');
+  const upcoming = events.filter(e => statusOf(e).kind !== 'post');
+  const filter = S.scheduleFilter || 'all';
+  const shown = filter === 'played' ? played : filter === 'upcoming' ? upcoming : events;
+
+  const byDay = new Map();
+  shown.forEach(e => {
+    const k = ymd(new Date(e.date));
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k).push(e);
+  });
+  const todayKey = ymd(new Date());
+  let anchored = false;
+
+  paint(body, `
+    <section class="panel section sched-head">
+      <div class="card-title"><span class="label">Full season</span>
+        <span class="label">${played.length} played · ${upcoming.length} to play</span></div>
+      <div class="chips sched-chips">
+        ${[['all', 'Everything', events.length], ['played', 'Played', played.length], ['upcoming', 'To come', upcoming.length]]
+          .map(([id, label, n]) => `<button class="chip${filter === id ? ' active' : ''}" data-sched="${id}">${label}<span class="n">${n}</span></button>`).join('')}
+        ${upcoming.length ? '<button class="chip" data-sched-jump="1">Jump to next</button>' : ''}
+      </div>
+    </section>
+    ${[...byDay.entries()].map(([k, ms]) => {
+      const future = k >= todayKey;
+      const anchor = (!anchored && future) ? (anchored = true, ' id="nextFixture"') : '';
+      return `<section class="group section"${anchor}>
+        <div class="day-head${k === todayKey ? ' today' : ''}">${esc(fmtDayLong(parseYmd(k)))}${k === todayKey ? ' <span class="today-tag">Today</span>' : ''}</div>
+        ${ms.map(m => matchRow(m)).join('')}</section>`;
+    }).join('')}`);
+}
+
 async function fillLeagueNews(lgId, body) {
   paint(body, `<section class="panel"><div class="note">Loading news…</div></section>`);
   try {
@@ -1429,88 +1480,135 @@ function playerMarks(p) {
 }
 const pStat = (p, k) => { const s = (p.stats || []).find(x => x.name === k); return s ? s.displayValue : null; };
 
-function pitchHTML(sum, home, away, lgId) {
+/* Vertical pitch with both XIs, portraits and match ratings.
+   Home occupies the top half attacking down, away the bottom half. */
+function ratingClass(r) {
+  if (r == null) return '';
+  if (r >= 7.5) return 'r-hi';
+  if (r >= 7) return 'r-good';
+  if (r >= 6.5) return 'r-ok';
+  if (r >= 6) return 'r-mid';
+  return 'r-low';
+}
+
+function pitchPlayer(p, side, lgId, ratings, depth, lateral) {
+  const ath = p.athlete || {};
+  const mk = playerMarks(p);
+  const rating = ratings && ath.id ? ratings[String(ath.id)] : null;
+  const portrait = photoOfSafe(ath.displayName);
+  const jersey = esc(p.jersey || ath.jersey || '');
+  const top = side === 'home' ? 7 + depth * 36 : 93 - depth * 36;
+  const left = side === 'home' ? lateral : 100 - lateral;
+  const tags = `${mk.goals || mk.og ? `<span class="pt goal">${ICON.ball}</span>` : ''}` +
+    `${mk.y ? '<span class="pt card y"></span>' : ''}${mk.r ? '<span class="pt card r"></span>' : ''}` +
+    `${mk.sub != null ? `<span class="pt sub">${ICON.arrowDown}</span>` : ''}`;
+  return `<a class="pp ${side}" style="--l:${left.toFixed(1)}%;--t:${top.toFixed(1)}%"
+      href="#/player/${esc(lgId)}/${esc(ath.id || '')}" title="${esc(ath.displayName || '')}">
+    <span class="pp-av">
+      ${portrait ? `<img src="${esc(portrait)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+      <span class="pp-num">${jersey}</span>
+      ${tags ? `<span class="pp-tags">${tags}</span>` : ''}
+      ${rating != null ? `<span class="pp-rating ${ratingClass(rating)}">${rating.toFixed(1)}</span>` : ''}
+    </span>
+    <span class="pp-name"><i>${jersey}</i>${esc(ath.shortName || ath.displayName || '')}</span>
+  </a>`;
+}
+
+function photoOfSafe(name) {
+  try { return (window.PredictUI && window.PredictUI.photoFor) ? window.PredictUI.photoFor(name) : ''; }
+  catch (e) { return ''; }
+}
+
+function formationRows(roster) {
+  const starters = (roster || []).filter(p => p.starter);
+  if (!starters.length) return [];
+  const gk = starters.filter(p => lineOf(posOf(p)) === 0);
+  const out = starters.filter(p => lineOf(posOf(p)) !== 0)
+    .sort((a, b) => lineOf(posOf(a)) - lineOf(posOf(b)) || latOf(posOf(a)) - latOf(posOf(b)) || (+a.formationPlace || 0) - (+b.formationPlace || 0));
+  return [gk].concat(chunkRows(out)).filter(r => r.length);
+}
+function chunkRows(outfield) {
+  const m = new Map();
+  outfield.forEach(p => { const l = lineOf(posOf(p)); if (!m.has(l)) m.set(l, []); m.get(l).push(p); });
+  return [...m.keys()].sort((a, b) => a - b).map(k => m.get(k));
+}
+
+function teamBar(team, formation, side) {
+  return `<div class="pitch-bar ${side}">
+    ${crest(team)}<b>${esc(team.full || team.name)}</b>
+    ${formation ? `<span class="pf">${esc(formation)}</span>` : ''}</div>`;
+}
+
+function pitchHTML(sum, home, away, lgId, ratings) {
   const rosters = sum.rosters || [];
-  if (!rosters.length || !rosters.some(r => (r.roster || []).some(p => p.starter))) {
-    return `<div class="note">Line-ups are published about an hour before kick-off.</div>`;
-  }
   const bySide = {};
   rosters.forEach(r => { bySide[r.homeAway || (String(r.team && r.team.id) === String(home.id) ? 'home' : 'away')] = r; });
-  const render = (r, side) => {
+  const H = bySide.home, A = bySide.away;
+  const hasXI = rosters.some(r => (r.roster || []).some(p => p.starter));
+  if (!hasXI) return '';
+
+  const draw = (r, side) => {
     if (!r) return '';
-    const starters = (r.roster || []).filter(p => p.starter);
-    const gk = starters.filter(p => lineOf(posOf(p)) === 0);
-    const outfield = starters.filter(p => lineOf(posOf(p)) !== 0)
-      .sort((a, b) => lineOf(posOf(a)) - lineOf(posOf(b)) || latOf(posOf(a)) - latOf(posOf(b)) || (+a.formationPlace || 0) - (+b.formationPlace || 0));
-    const f = String(r.formation || '').split('-').map(Number).filter(n => n > 0);
-    let rows = [];
-    if (f.length && f.reduce((s, n) => s + n, 0) === outfield.length) {
-      let i = 0;
-      rows = f.map(n => outfield.slice(i, i += n).sort((a, b) => latOf(posOf(a)) - latOf(posOf(b)) || (+a.formationPlace || 0) - (+b.formationPlace || 0)));
-    } else {
-      const m = new Map();
-      outfield.forEach(p => { const l = lineOf(posOf(p)); if (!m.has(l)) m.set(l, []); m.get(l).push(p); });
-      rows = [...m.keys()].sort((a, b) => a - b).map(k => m.get(k));
-    }
-    rows.unshift(gk);
-    rows = rows.filter(x => x.length);
+    const rows = formationRows(r.roster);
     const R = rows.length;
-    return rows.map((row, ri) => row.map((p, pi) => {
-      let x = R > 1 ? 5 + ri * (40 / (R - 1)) : 25;
-      let y = 50 + (((pi + 1) / (row.length + 1)) - 0.5) * 84;
-      if (side === 'away') { x = 100 - x; y = 100 - y; }
-      const mk = playerMarks(p);
-      const ath = p.athlete || {};
-      const g = +pStat(p, 'totalGoals') || mk.goals;
-      const a = +pStat(p, 'goalAssists') || 0;
-      const sh = +pStat(p, 'totalShots') || 0;
-      const line = [g ? `${g}G` : '', a ? `${a}A` : '', (!g && !a && sh) ? `${sh} sh` : ''].filter(Boolean).join(' ');
-      const tags = `${mk.goals || mk.og ? `<span class="goal-t">${ICON.ball}</span>` : ''}${mk.y ? cardIcon('y') : ''}${mk.r ? cardIcon('r') : ''}${mk.sub != null ? '<span class="sub-t">↓</span>' : ''}`;
-      const portrait = photoOf(ath.displayName || '');
-      return `<a class="pl ${side}${lineOf(posOf(p)) === 0 ? ' gk' : ''}" href="#/player/${esc(lgId)}/${esc(ath.id || '')}"
-        style="--x:${x.toFixed(2)}%;--y:${y.toFixed(2)}%;--vx:${y.toFixed(2)}%;--vy:${x.toFixed(2)}%">
-        <span class="shirt${portrait ? ' has-photo' : ''}">${esc(p.jersey || ath.jersey || '')}${portrait ? `<img class="sh-img" src="${esc(portrait)}" alt="" loading="lazy" onerror="this.remove()">` : ''}${tags ? `<span class="tags">${tags}</span>` : ''}</span>
-        <span class="nm">${esc(ath.shortName || ath.displayName || '')}</span>
-        ${line ? `<span class="pl-stat">${esc(line)}</span>` : ''}</a>`;
+    // honour the stated formation when the position data agrees on the count
+    const f = String(r.formation || '').split('-').map(Number).filter(n => n > 0);
+    let use = rows;
+    if (f.length) {
+      const outfield = rows.slice(1).reduce((a, b) => a.concat(b), []);
+      if (f.reduce((s, n) => s + n, 0) === outfield.length) {
+        let i = 0;
+        use = [rows[0]].concat(f.map(n => outfield.slice(i, i += n)
+          .sort((a, b) => latOf(posOf(a)) - latOf(posOf(b)) || (+a.formationPlace || 0) - (+b.formationPlace || 0))));
+      }
+    }
+    const total = use.length;
+    return use.map((row, ri) => row.map((p, pi) => {
+      const depth = total > 1 ? ri / (total - 1) : 0.2;
+      const lateral = 50 + (((pi + 1) / (row.length + 1)) - 0.5) * 80;
+      return pitchPlayer(p, side, lgId, ratings, depth, lateral);
     }).join('')).join('');
   };
-  const bench = (r, side) => {
+
+  const benchRow = (r, side) => {
     if (!r) return '<div></div>';
     const subs = (r.roster || []).filter(p => !p.starter);
-    return `<div><div class="card-title"><span class="label">${esc(side === 'home' ? home.name : away.name)} bench</span></div>
+    const team = side === 'home' ? home : away;
+    return `<div><div class="card-title"><span class="label">${esc(team.name)} bench</span></div>
       ${subs.length ? subs.map(p => {
         const mk = playerMarks(p);
+        const ath = p.athlete || {};
         const on = mk.sub != null || p.subbedIn;
-        return `<a class="bench-row${on ? ' on' : ''}" href="#/player/${esc(lgId)}/${esc((p.athlete && p.athlete.id) || '')}">
-          <span class="j">${esc(p.jersey || (p.athlete && p.athlete.jersey) || '')}</span>
-          <span class="n">${esc((p.athlete && p.athlete.displayName) || '')}</span>
+        const rating = ratings && ath.id ? ratings[String(ath.id)] : null;
+        return `<a class="bench-row${on ? ' on' : ''}" href="#/player/${esc(lgId)}/${esc(ath.id || '')}">
+          <span class="j">${esc(p.jersey || ath.jersey || '')}</span>
+          <span class="n">${esc(ath.displayName || '')}</span>
           <span class="p">${esc(posOf(p))}</span>
           ${on ? `<span class="sub-in">${ICON.arrowUp}</span>` : ''}
-          ${mk.goals ? ICON.ball : ''}${mk.y ? cardIcon('y') : ''}${mk.r ? cardIcon('r') : ''}</a>`;
+          ${mk.goals ? ICON.ball : ''}${mk.y ? cardIcon('y') : ''}${mk.r ? cardIcon('r') : ''}
+          ${rating != null ? `<span class="bench-rating ${ratingClass(rating)}">${rating.toFixed(1)}</span>` : ''}
+        </a>`;
       }).join('') : '<div class="bench-row">No substitutes listed</div>'}</div>`;
   };
-  const H = bySide.home, A = bySide.away;
+
   return `<div class="pitch-wrap">
-    <div class="formations">
-      <span>${crest(home)}${esc(home.name)} <em>${esc((H && H.formation) || '')}</em></span>
-      <span><em>${esc((A && A.formation) || '')}</em> ${esc(away.name)}${crest(away)}</span>
+    ${teamBar(home, H && H.formation, 'top')}
+    <div class="pitch-v">
+      <svg class="lines" viewBox="0 0 680 1050" preserveAspectRatio="none" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="3">
+        <rect x="10" y="10" width="660" height="1030" rx="4"/><line x1="10" y1="525" x2="670" y2="525"/>
+        <circle cx="340" cy="525" r="84"/><circle cx="340" cy="525" r="4" fill="rgba(255,255,255,.35)"/>
+        <rect x="170" y="10" width="340" height="150"/><rect x="170" y="890" width="340" height="150"/>
+        <rect x="258" y="10" width="164" height="55"/><rect x="258" y="985" width="164" height="55"/>
+        <path d="M258 160a95 95 0 0 0 164 0"/><path d="M258 890a95 95 0 0 1 164 0"/>
+      </svg>
+      ${draw(H, 'home')}${draw(A, 'away')}
     </div>
-    <div class="pitch">
-      <svg class="lines h" viewBox="0 0 1050 680" preserveAspectRatio="none" fill="none" stroke="rgba(255,255,255,.26)" stroke-width="3">
-        <rect x="12" y="12" width="1026" height="656" rx="4"/><line x1="525" y1="12" x2="525" y2="668"/>
-        <circle cx="525" cy="340" r="82"/><circle cx="525" cy="340" r="4" fill="rgba(255,255,255,.4)"/>
-        <rect x="12" y="176" width="150" height="328"/><rect x="888" y="176" width="150" height="328"/>
-        <rect x="12" y="264" width="50" height="152"/><rect x="988" y="264" width="50" height="152"/></svg>
-      <svg class="lines v" viewBox="0 0 680 1050" preserveAspectRatio="none" fill="none" stroke="rgba(255,255,255,.26)" stroke-width="3">
-        <rect x="12" y="12" width="656" height="1026" rx="4"/><line x1="12" y1="525" x2="668" y2="525"/>
-        <circle cx="340" cy="525" r="82"/><circle cx="340" cy="525" r="4" fill="rgba(255,255,255,.4)"/>
-        <rect x="176" y="12" width="328" height="150"/><rect x="176" y="888" width="328" height="150"/>
-        <rect x="264" y="12" width="152" height="50"/><rect x="264" y="988" width="152" height="50"/></svg>
-      ${render(H, 'home')}${render(A, 'away')}
-    </div>
-    <p class="fine">Tap a player for their profile. Photos are not available in this data source, so shirt numbers are shown.</p>
+    ${teamBar(away, A && A.formation, 'bottom')}
+    ${ratings && Object.keys(ratings).length
+      ? '<p class="fine">Ratings are calculated by Pitchside from each player’s match statistics — goals, duels, passing, saves and cards. They are not official ratings.</p>'
+      : '<p class="fine">Tap a player for their profile. Ratings appear once the match has been played.</p>'}
   </div>
-  <div class="bench">${bench(H, 'home')}${bench(A, 'away')}</div>`;
+  <div class="bench">${benchRow(H, 'home')}${benchRow(A, 'away')}</div>`;
 }
 
 const PCOLS = [['totalGoals', 'G'], ['goalAssists', 'A'], ['totalShots', 'Sh'], ['shotsOnTarget', 'SoT'], ['saves', 'Sv'],
@@ -1759,7 +1857,26 @@ function drawMatch(sum, lgId, matchId) {
     }
   }
   else if (S.matchTab === 'stats') paint(body, `<section class="panel section">${statsHTML(sum, home, away)}</section>`);
-  else if (S.matchTab === 'lineups') paint(body, `<section class="panel section">${pitchHTML(sum, home, away, lgId)}</section>`);
+  else if (S.matchTab === 'lineups') {
+    const cached = window.PredictUI && window.PredictUI.cachedRatings ? window.PredictUI.cachedRatings(matchId) : null;
+    const pitch = pitchHTML(sum, home, away, lgId, cached);
+    if (pitch) {
+      paint(body, `<section class="panel section">${pitch}</section>`);
+      if (!cached && st.kind !== 'pre' && window.PredictUI && window.PredictUI.loadRatings) {
+        window.PredictUI.loadRatings(lgId, matchId, sum).then(map => {
+          if (!map || S.matchTab !== 'lineups' || S.route.name !== 'match' || S.route.id !== matchId) return;
+          paint($('#tabBody'), `<section class="panel section">${pitchHTML(sum, home, away, lgId, map)}</section>`);
+        }).catch(() => {});
+      }
+    } else {
+      paint(body, '<section class="panel section" id="probableXI"></section>');
+      if (window.PredictUI && window.PredictUI.renderProbableXI) {
+        window.PredictUI.renderProbableXI($('#probableXI'), { lgId, home, away });
+      } else {
+        paint($('#probableXI'), '<div class="note">Line-ups are published about an hour before kick-off.</div>');
+      }
+    }
+  }
   else if (S.matchTab === 'players') paint(body, `<section class="panel section">${playersHTML(sum, home, away, lgId)}</section>`);
   else if (S.matchTab === 'commentary') paint(body, `<section class="panel section"><div class="card-title"><span class="label">Commentary</span></div>${commentaryHTML(sum)}</section>`);
   else {
@@ -1887,6 +2004,10 @@ document.addEventListener('click', e => {
   if (tab && S.current) { S.matchTab = tab.dataset.tab; drawMatch(S.current.sum, S.current.lgId, S.current.matchId); return; }
   const pside = e.target.closest('[data-pside]');
   if (pside && S.current) { S.playerSide = pside.dataset.pside; drawMatch(S.current.sum, S.current.lgId, S.current.matchId); return; }
+  const sched = e.target.closest('[data-sched]');
+  if (sched && S.route.name === 'league') { S.scheduleFilter = sched.dataset.sched; renderLeague(S.route.lg, S.route.tab); return; }
+  const jump = e.target.closest('[data-sched-jump]');
+  if (jump) { const el = $('#nextFixture'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   const month = e.target.closest('[data-month]');
   if (month && S.route.name === 'league') { S.monthOffset += +month.dataset.month; renderLeague(S.route.lg, S.route.tab); return; }
   const cal = e.target.closest('#calBtn');
