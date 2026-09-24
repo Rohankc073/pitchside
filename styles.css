@@ -36,6 +36,8 @@
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .3);
   --shadow-2: 0 8px 24px rgba(0, 0, 0, .35);
 
+  --header-h: 62px;   /* the sticky header; anything below it offsets from here */
+
   /* type ladder — stick to these; the file previously drifted to 30 sizes */
   --t-micro: 11px;  --t-sm: 12px;  --t-md: 13px;  --t-base: 14px;
   --t-lg: 16px;     --t-xl: 19px;  --t-2xl: 23px; --t-3xl: 28px;
@@ -84,7 +86,7 @@ button { font: inherit; color: inherit; background: none; border: 0; }
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   border-bottom: 1px solid var(--border);
 }
-.topbar-in { max-width: 1400px; margin: 0 auto; padding: 0 20px; height: 62px; display: flex; align-items: center; gap: 20px; }
+.topbar-in { max-width: 1400px; margin: 0 auto; padding: 0 20px; height: var(--header-h); display: flex; align-items: center; gap: 20px; }
 .brand { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; letter-spacing: -.015em; }
 .brand em { font-style: normal; color: var(--brand); }
 .brand-mark {
@@ -121,7 +123,7 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 
 /* ---------- layout ---------- */
 .layout { max-width: 1400px; margin: 0 auto; padding: 20px; display: grid; grid-template-columns: 236px minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
-.sidebar, .rail { position: sticky; top: 80px; max-height: calc(100vh - 100px); overflow: auto; }
+.sidebar, .rail { position: sticky; top: calc(var(--header-h) + 18px); max-height: calc(100vh - 100px); overflow: auto; }
 .rail { display: flex; flex-direction: column; gap: 14px; }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); }
 .foot { max-width: 1400px; margin: 0 auto; padding: 4px 20px 28px; color: var(--text-3); font-size: 12px; text-align: center; }
@@ -1061,7 +1063,7 @@ h1.page-title { font-size: 28px; letter-spacing: -.025em; }
   .nb-in, .fatal-in { padding: 12px 16px; }
   .nb-actions { margin-left: 0; width: 100%; }
   .nb-actions .btn { flex: 1; }
-  .search-drop { position: fixed; left: 12px; right: 12px; top: 62px; }
+  .search-drop { position: fixed; left: 12px; right: 12px; top: var(--header-h); }
 }
 
 /* ---------- club history ---------- */
@@ -1081,13 +1083,17 @@ h1.page-title { font-size: 28px; letter-spacing: -.025em; }
 }
 
 
+/* anything we scroll to must clear the sticky header and tabs */
+html { scroll-padding-top: calc(var(--header-h) + 56px); }
+#nextFixture, .group[id], section[id] { scroll-margin-top: calc(var(--header-h) + 56px); }
+
 /* ============================================================
    Interaction polish
    ============================================================ */
 
 /* sub-navigation stays reachable on long pages */
 .tabs {
-  position: sticky; top: 61px; z-index: 30;
+  position: sticky; top: var(--header-h); z-index: 30;
   background: linear-gradient(var(--bg) 70%, rgba(10, 14, 19, .82));
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   margin-left: -2px; padding-left: 2px;
@@ -1137,10 +1143,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
   border-radius: 50%; background: var(--brand); transform: translateX(-50%);
 }
 
-@media (max-width: 900px) { .tabs { top: 57px; } }
 @media (max-width: 640px) {
   .to-top { right: 14px; bottom: 14px; }
-  .tabs { top: 61px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
