@@ -14,26 +14,56 @@ const API2 = 'https://site.api.espn.com/apis/v2/sports/soccer';
 const WEB = 'https://site.web.api.espn.com/apis/common/v3/sports/soccer';
 const CORE = 'https://sports.core.api.espn.com/v2/sports/soccer/leagues';
 
+/* Competitions we follow. International tournaments come first: during a
+   break they are the only football on, and a scores page that shows nothing
+   while the Nations League is being played is worse than useless.
+   'intl' groups them in the sidebar; 'tier' orders the scores page. */
 const LEAGUES = [
-  { id: 'uefa.champions', name: 'Champions League', region: 'Europe', logoId: 2 },
-  { id: 'eng.1', name: 'Premier League', region: 'England', logoId: 23 },
-  { id: 'esp.1', name: 'LaLiga', region: 'Spain', logoId: 15 },
-  { id: 'ita.1', name: 'Serie A', region: 'Italy', logoId: 12 },
-  { id: 'ger.1', name: 'Bundesliga', region: 'Germany', logoId: 10 },
-  { id: 'fra.1', name: 'Ligue 1', region: 'France', logoId: 9 },
-  { id: 'uefa.europa', name: 'Europa League', region: 'Europe', logoId: 2310 },
-  { id: 'uefa.europa.conf', name: 'Conference League', region: 'Europe', logoId: 20296 },
-  { id: 'eng.2', name: 'Championship', region: 'England', logoId: 24 },
-  { id: 'por.1', name: 'Primeira Liga', region: 'Portugal', logoId: 14 },
-  { id: 'ned.1', name: 'Eredivisie', region: 'Netherlands', logoId: 11 },
-  { id: 'tur.1', name: 'Süper Lig', region: 'Turkey', logoId: 18 },
-  { id: 'bel.1', name: 'Pro League', region: 'Belgium', logoId: 6 },
-  { id: 'sco.1', name: 'Premiership', region: 'Scotland', logoId: 45 },
-  { id: 'ksa.1', name: 'Saudi Pro League', region: 'Saudi Arabia', logoId: 2488 },
-  { id: 'usa.1', name: 'MLS', region: 'USA', logoId: 19 },
-  { id: 'mex.1', name: 'Liga MX', region: 'Mexico', logoId: 22 },
-  { id: 'bra.1', name: 'Brasileirão', region: 'Brazil', logoId: 85 },
-  { id: 'arg.1', name: 'Liga Profesional', region: 'Argentina', logoId: 1 },
+  // --- international ---
+  { id: 'fifa.world', name: 'World Cup', region: 'International', logoId: 4, intl: true, tier: 1 },
+  { id: 'uefa.nations', name: 'Nations League', region: 'Europe', logoId: 19286, intl: true, tier: 1 },
+  { id: 'fifa.worldq.uefa', name: 'World Cup Qualifying', region: 'Europe', logoId: 16, intl: true, tier: 1 },
+  { id: 'fifa.worldq.conmebol', name: 'World Cup Qualifying', region: 'South America', logoId: 16, intl: true, tier: 1 },
+  { id: 'fifa.worldq.concacaf', name: 'World Cup Qualifying', region: 'N & C America', logoId: 16, intl: true, tier: 1 },
+  { id: 'fifa.worldq.caf', name: 'World Cup Qualifying', region: 'Africa', logoId: 16, intl: true, tier: 1 },
+  { id: 'fifa.worldq.afc', name: 'World Cup Qualifying', region: 'Asia', logoId: 16, intl: true, tier: 1 },
+  { id: 'fifa.worldq.ofc', name: 'World Cup Qualifying', region: 'Oceania', logoId: 16, intl: true, tier: 2 },
+  { id: 'uefa.euro', name: 'European Championship', region: 'Europe', logoId: 8, intl: true, tier: 1 },
+  { id: 'uefa.euroq', name: 'Euro Qualifying', region: 'Europe', logoId: 8, intl: true, tier: 2 },
+  { id: 'caf.nations', name: 'Africa Cup of Nations', region: 'Africa', logoId: 12235, intl: true, tier: 1 },
+  { id: 'caf.nations_qual', name: 'AFCON Qualifying', region: 'Africa', logoId: 12235, intl: true, tier: 1 },
+  { id: 'conmebol.america', name: 'Copa América', region: 'South America', logoId: 83, intl: true, tier: 1 },
+  { id: 'concacaf.gold', name: 'Gold Cup', region: 'N & C America', logoId: 105, intl: true, tier: 2 },
+  { id: 'concacaf.nations.league', name: 'Concacaf Nations League', region: 'N & C America', logoId: 105, intl: true, tier: 2 },
+  { id: 'afc.asian.cup', name: 'Asian Cup', region: 'Asia', logoId: 759, intl: true, tier: 2 },
+  { id: 'fifa.wwc', name: "Women's World Cup", region: 'International', logoId: 5, intl: true, tier: 2 },
+  { id: 'uefa.weuro', name: "Women's Euro", region: 'Europe', logoId: 8, intl: true, tier: 3 },
+  { id: 'fifa.olympics', name: 'Olympic Football', region: 'International', logoId: 6, intl: true, tier: 3 },
+  { id: 'fifa.friendly', name: 'International Friendlies', region: 'International', logoId: 4, intl: true, tier: 3 },
+
+  // --- club ---
+  { id: 'uefa.champions', name: 'Champions League', region: 'Europe', logoId: 2, tier: 1 },
+  { id: 'eng.1', name: 'Premier League', region: 'England', logoId: 23, tier: 1 },
+  { id: 'esp.1', name: 'LaLiga', region: 'Spain', logoId: 15, tier: 1 },
+  { id: 'ita.1', name: 'Serie A', region: 'Italy', logoId: 12, tier: 1 },
+  { id: 'ger.1', name: 'Bundesliga', region: 'Germany', logoId: 10, tier: 1 },
+  { id: 'fra.1', name: 'Ligue 1', region: 'France', logoId: 9, tier: 1 },
+  { id: 'uefa.europa', name: 'Europa League', region: 'Europe', logoId: 2310, tier: 2 },
+  { id: 'uefa.europa.conf', name: 'Conference League', region: 'Europe', logoId: 20296, tier: 2 },
+  { id: 'uefa.wchampions', name: "Women's Champions League", region: 'Europe', logoId: 2, tier: 3 },
+  { id: 'fifa.cwc', name: 'Club World Cup', region: 'International', logoId: 4, tier: 3 },
+  { id: 'eng.2', name: 'Championship', region: 'England', logoId: 24, tier: 2 },
+  { id: 'por.1', name: 'Primeira Liga', region: 'Portugal', logoId: 14, tier: 2 },
+  { id: 'ned.1', name: 'Eredivisie', region: 'Netherlands', logoId: 11, tier: 2 },
+  { id: 'tur.1', name: 'Süper Lig', region: 'Turkey', logoId: 18, tier: 2 },
+  { id: 'bel.1', name: 'Pro League', region: 'Belgium', logoId: 6, tier: 3 },
+  { id: 'sco.1', name: 'Premiership', region: 'Scotland', logoId: 45, tier: 3 },
+  { id: 'ksa.1', name: 'Saudi Pro League', region: 'Saudi Arabia', logoId: 2488, tier: 3 },
+  { id: 'usa.1', name: 'MLS', region: 'USA', logoId: 19, tier: 2 },
+  { id: 'mex.1', name: 'Liga MX', region: 'Mexico', logoId: 22, tier: 2 },
+  { id: 'bra.1', name: 'Brasileirão', region: 'Brazil', logoId: 85, tier: 2 },
+  { id: 'arg.1', name: 'Liga Profesional', region: 'Argentina', logoId: 1, tier: 3 },
+  { id: 'club.friendly', name: 'Club Friendlies', region: 'International', logoId: 4, tier: 3 },
 ];
 const LG_BY_ID = Object.fromEntries(LEAGUES.map(l => [l.id, l]));
 const UEFA = ['uefa.champions', 'uefa.europa', 'uefa.europa.conf'];
@@ -342,8 +372,21 @@ const S = {
   monthOffset: 0, loading: 0, token: 0, current: null,
 };
 const savePins = () => { LS.pins = S.pins; persist(); };
-const orderedLeagues = () => [...LEAGUES.filter(l => S.pins.includes(l.id)), ...LEAGUES.filter(l => !S.pins.includes(l.id))];
+const orderedLeagues = () => {
+  const pinned = LEAGUES.filter(l => S.pins.includes(l.id));
+  const rest = LEAGUES.filter(l => !S.pins.includes(l.id))
+    .slice()
+    .sort((a, b) => (a.tier || 3) - (b.tier || 3) || (b.intl ? 1 : 0) - (a.intl ? 1 : 0));
+  return pinned.concat(rest);
+};
 const lgName = id => (S.lgMeta[id] && S.lgMeta[id].name) || (LG_BY_ID[id] || {}).name || id;
+
+let collapsed = (() => { try { return JSON.parse(localStorage.getItem('pitchside.collapsed') || '[]'); } catch (e) { return []; } })();
+const isCollapsed = id => collapsed.indexOf(id) !== -1;
+function toggleCollapsed(id) {
+  collapsed = isCollapsed(id) ? collapsed.filter(x => x !== id) : collapsed.concat([id]);
+  try { localStorage.setItem('pitchside.collapsed', JSON.stringify(collapsed)); } catch (e) {}
+}
 
 const painted = new WeakMap();
 function paint(el, html) {
@@ -413,7 +456,7 @@ async function loadDay(date, opts = {}) {
         scheduleRender();
       }
     };
-    await Promise.all(Array.from({ length: 6 }, worker));
+    await Promise.all(Array.from({ length: 8 }, worker));
   };
 
   // the day itself first: after this pass the page is usable
@@ -562,14 +605,24 @@ function renderDatebar() {
     <button class="icon-btn" id="calBtn" aria-label="Pick a date">${ICON.cal}
       <input type="date" id="calInput" value="${ymd(S.date).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')}" tabindex="-1"></button>
   </div>`);
+  // scrollIntoView also moved the page and left today off-screen on a narrow
+  // strip; set the strip's own scroll position instead
   const active = bar.querySelector('.day.active');
-  if (active) active.scrollIntoView({ block: 'nearest', inline: 'center' });
+  const strip = bar.querySelector('.days');
+  if (active && strip) {
+    strip.scrollLeft = Math.max(0, active.offsetLeft - (strip.clientWidth - active.clientWidth) / 2);
+  }
 }
 function groupHTML(g) {
-  return `<header class="group-head">${lgLogo(g.lg.id)}
-      <div class="t"><b>${esc(lgName(g.lg.id))}</b><span>${esc(g.lg.region)} · ${g.events.length} match${g.events.length === 1 ? '' : 'es'}</span></div>
+  const shut = isCollapsed(g.lg.id);
+  const live = g.events.filter(m => statusOf(m).kind === 'live').length;
+  return `<header class="group-head${shut ? ' shut' : ''}">
+      <button class="grp-toggle" data-collapse="${esc(g.lg.id)}" aria-expanded="${!shut}"
+        aria-label="${shut ? 'Show' : 'Hide'} ${esc(lgName(g.lg.id))}">${ICON.chevR}</button>
+      ${lgLogo(g.lg.id)}
+      <div class="t"><b>${esc(lgName(g.lg.id))}</b><span>${esc(g.lg.region)} · ${g.events.length} match${g.events.length === 1 ? '' : 'es'}${live ? ' · ' + live + ' live' : ''}</span></div>
       <a class="link" href="#/league/${esc(g.lg.id)}">League ${ICON.chevR}</a>
-    </header>${g.events.map(m => matchRow(m)).join('')}`;
+    </header>${shut ? '' : g.events.map(m => matchRow(m)).join('')}`;
 }
 function paintGroups(container, groups) {
   const keep = new Set();
@@ -615,7 +668,7 @@ function renderScoresBody() {
   else if (filtered) { heading = 'Nothing matches this filter'; message = `No ${S.filter === 'all' ? '' : S.filter + ' '}matches${S.q ? ` for “${esc(S.q)}”` : ''} on ${esc(fmtDayLong(S.date))}.`; }
   else {
     heading = diff === 0 ? 'No matches today' : diff === 1 ? 'No matches tomorrow' : `No matches on ${esc(fmtDayShort(S.date))}`;
-    message = 'None of the leagues we follow are playing. This is normal during international breaks and between matchdays.';
+    message = 'Nothing scheduled today in any of the 42 competitions we follow, club or international.';
   }
   paint(list, `<div class="panel empty">
       <div class="empty-ic">${failed ? ICON.info : ICON.cal}</div>
@@ -655,20 +708,31 @@ function renderSidebar() {
   el.className = 'sidebar panel';
   const c = countsFor(S.date);
   const activeLg = S.route.name === 'league' ? S.route.lg : null;
+
+  const row = lg => {
+    const n = c.per[lg.id] || { total: 0, live: 0 };
+    const pinned = S.pins.includes(lg.id);
+    return `<a class="lg-item${activeLg === lg.id ? ' active' : ''}" href="#/league/${esc(lg.id)}">
+      ${lgLogo(lg.id)}<span class="name">${esc(lg.name)}<small>${esc(lg.region)}</small></span>
+      ${n.live ? `<span class="count live">${n.live}</span>` : n.total ? `<span class="count">${n.total}</span>` : ''}
+      <span class="pin${pinned ? ' on' : ''}" data-pin="${esc(lg.id)}" role="button" tabindex="0" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(lg.name)}">${pinned ? ICON.starOn : ICON.star}</span>
+    </a>`;
+  };
+  // internationals and clubs are different things to a supporter, so they are
+  // listed separately rather than interleaved by tier
+  const section = (title, list) => list.length
+    ? `<div class="side-head"><span class="label">${title}</span></div>
+       <div class="lg-list">${list.map(row).join('')}</div>`
+    : '';
+
+  const ordered = orderedLeagues();
   paint(el, `${LS.favs.length ? `<div class="side-head"><span class="label">My clubs</span></div>
       <div class="lg-list">${LS.favs.map(f => `<a class="lg-item" href="#/team/${esc(f.lg)}/${esc(f.id)}">
         ${crest({ logo: f.logo, name: f.name }, 'lg-logo')}<span class="name">${esc(f.name)}</span></a>`).join('')}</div>` : ''}
-    <div class="side-head"><span class="label">Competitions</span></div>
-    <div class="lg-list">${orderedLeagues().map(lg => {
-      const n = c.per[lg.id] || { total: 0, live: 0 };
-      const pinned = S.pins.includes(lg.id);
-      return `<a class="lg-item${activeLg === lg.id ? ' active' : ''}" href="#/league/${esc(lg.id)}">
-        ${lgLogo(lg.id)}<span class="name">${esc(lg.name)}</span>
-        ${n.live ? `<span class="count live">${n.live}</span>` : n.total ? `<span class="count">${n.total}</span>` : ''}
-        <span class="pin${pinned ? ' on' : ''}" data-pin="${esc(lg.id)}" role="button" tabindex="0" aria-label="${pinned ? 'Unpin' : 'Pin'} ${esc(lg.name)}">${pinned ? ICON.starOn : ICON.star}</span>
-      </a>`;
-    }).join('')}</div>`);
+    ${section('International', ordered.filter(l => l.intl))}
+    ${section('Clubs', ordered.filter(l => !l.intl))}`);
 }
+
 function spotlightMatch() {
   const all = [];
   orderedLeagues().forEach(lg => { const b = dayMap(S.date).get(lg.id); if (b) all.push(...b.events); });
@@ -2140,6 +2204,8 @@ document.addEventListener('click', e => {
   if (shift) { goDate(addDays(S.date, +shift.dataset.shift)); return; }
   const day = e.target.closest('[data-date]');
   if (day) { goDate(parseYmd(day.dataset.date)); return; }
+  const collapse = e.target.closest('[data-collapse]');
+  if (collapse) { toggleCollapsed(collapse.dataset.collapse); renderScoresBody(); return; }
   const filter = e.target.closest('[data-filter]');
   if (filter) { S.filter = filter.dataset.filter; renderScoresBody(); return; }
   const tab = e.target.closest('[data-tab]');

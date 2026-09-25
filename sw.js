@@ -1,14 +1,20 @@
 /* Pitchside service worker.
-   Shell: stale-while-revalidate, so pages open instantly and pick up new code
-   on the next load. Data: network first with a cache fallback, so a dropped
-   connection (or an ESPN wobble) shows the last known scores instead of an
-   error. */
-const VERSION = 'v3';
+
+   Network-first for our own files, with the cache as the fallback. An earlier
+   version served the cache first and revalidated in the background, which
+   meant every visitor ran the previous deploy for one whole visit — a real
+   problem for a site that changes often. Offline still works: if the network
+   fails or stalls, the cached copy is served immediately.
+
+   Data responses stay network-first too, so a dropped connection shows the
+   last known scores instead of an error. */
+const VERSION = 'v5';
 const SHELL = `pitchside-shell-${VERSION}`;
 const DATA = `pitchside-data-${VERSION}`;
 const SHELL_FILES = ['./', './index.html', './styles.css', './app.js', './predictions.js', './predict-ui.js', './manifest.json'];
 const DATA_HOSTS = /(espn\.com|espncdn\.com|wikipedia\.org|wikimedia\.org)$/;
 const DATA_LIMIT = 300;
+const NET_TIMEOUT = 3500;
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()).catch(() => self.skipWaiting()));
@@ -28,6 +34,16 @@ async function trim(cacheName, max) {
   if (keys.length > max) await Promise.all(keys.slice(0, keys.length - max).map(k => c.delete(k)));
 }
 
+// resolve with the network, but do not wait forever before falling back
+function withTimeout(promise, ms) {
+  return new Promise(resolve => {
+    let settled = false;
+    const done = v => { if (!settled) { settled = true; resolve(v); } };
+    promise.then(done).catch(() => done(null));
+    setTimeout(() => done(null), ms);
+  });
+}
+
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -37,12 +53,13 @@ self.addEventListener('fetch', e => {
   if (url.origin === self.location.origin) {
     e.respondWith((async () => {
       const cache = await caches.open(SHELL);
-      const hit = await cache.match(req, { ignoreSearch: false });
-      const net = fetch(req).then(res => {
+      const fresh = await withTimeout(fetch(req).then(res => {
         if (res && res.ok) cache.put(req, res.clone());
         return res;
-      }).catch(() => null);
-      return hit || (await net) || new Response('Offline', { status: 503, statusText: 'Offline' });
+      }), NET_TIMEOUT);
+      if (fresh) return fresh;
+      const hit = await cache.match(req, { ignoreSearch: true });
+      return hit || new Response('Offline', { status: 503, statusText: 'Offline' });
     })());
     return;
   }

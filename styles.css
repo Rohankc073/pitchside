@@ -125,6 +125,10 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .layout { max-width: 1400px; margin: 0 auto; padding: 20px; display: grid; grid-template-columns: 236px minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
 .sidebar, .rail { position: sticky; top: calc(var(--header-h) + 18px); max-height: calc(100vh - 100px); overflow: auto; }
 .rail { display: flex; flex-direction: column; gap: 14px; }
+/* rail cards keep their natural height: as flex children they were being
+   shrunk to fit, and .spot has overflow:hidden, so the Up next card had its
+   scoreline sliced off */
+.rail > * { flex: 0 0 auto; }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); }
 .foot { max-width: 1400px; margin: 0 auto; padding: 4px 20px 28px; color: var(--text-3); font-size: 12px; text-align: center; }
 
@@ -273,9 +277,9 @@ h1.page-title { font-size: 23px; font-weight: 700; letter-spacing: -.02em; margi
 .spot-main { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin: 16px 0 14px; }
 .spot-team { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; font-size: 13px; font-weight: 500; min-width: 0; }
 .spot-team .crest, .spot-team .crest-fb { width: 52px; height: 52px; font-size: 13px; }
-.spot-team span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spot-team span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .spot-score { text-align: center; }
-.spot-score b { display: block; font-size: 28px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.spot-score b { display: block; font-size: 23px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; white-space: nowrap; }
 .spot-score small { color: var(--text-3); font-size: 12px; font-weight: 500; }
 .spot-score small.live { color: var(--live); }
 .spot .btn { width: 100%; }
@@ -1194,7 +1198,7 @@ html, body { overflow-x: clip; max-width: 100%; }
 
 @media (max-width: 400px) {
   /* reclaim width for the two club names, which are what people read */
-  .match { grid-template-columns: 38px minmax(0, 1fr) 56px minmax(0, 1fr); column-gap: 6px; padding: 11px 10px; }
+  .match { grid-template-columns: 54px minmax(0, 1fr) 48px minmax(0, 1fr); column-gap: 6px; padding: 7px 8px; }
   .scorers { grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr); column-gap: 6px; }
   .tm { font-size: 13px; gap: 5px; }
   .crest, .crest-fb { width: 19px; height: 19px; }
@@ -1231,7 +1235,7 @@ html, body { overflow-x: clip; max-width: 100%; }
 
 /* very small phones and large accessibility text */
 @media (max-width: 340px) {
-  .match { grid-template-columns: 34px minmax(0, 1fr) 50px minmax(0, 1fr); column-gap: 5px; }
+  .match { grid-template-columns: 50px minmax(0, 1fr) 44px minmax(0, 1fr); column-gap: 5px; }
   .scorers { display: none; }              /* scorers wrap badly at this width */
   .crest, .crest-fb { width: 17px; height: 17px; }
   .brand-mark { width: 28px; height: 28px; }
@@ -1242,6 +1246,52 @@ html, body { overflow-x: clip; max-width: 100%; }
 @media (max-height: 460px) and (orientation: landscape) {
   .tabs { position: static; }
   .sidebar, .rail { position: static; max-height: none; }
+}
+
+
+/* ============================================================
+   Scores density
+   Rows were 56px tall and stretched the full panel width, so a
+   phone showed seven matches where FotMob shows twenty. Rows are
+   now tighter and the match itself is centred in a readable band
+   instead of being pulled apart by the container.
+   ============================================================ */
+.match {
+  /* 66px fits "10:45 PM" on one line at 12px; 54 wrapped it */
+  grid-template-columns: 66px minmax(0, 300px) 66px minmax(0, 300px) 16px;
+  justify-content: center;
+  padding: 7px 14px;
+  min-height: 44px;
+}
+.match .crest, .match .crest-fb { width: 20px; height: 20px; }
+.tm { font-size: 13px; gap: 8px; }
+.score { font-size: 16px; }
+.score .box { min-width: 26px; }
+.score.pre .vs { padding: 3px 8px; font-size: 13px; }
+.st { font-size: 12px; white-space: nowrap; }
+.scorers { grid-column: 2 / 5; font-size: 11px; }
+.group-head { padding: 9px 14px; }
+.group-head .t b { font-size: 13px; }
+.group-head .t span { font-size: 11px; }
+.groups { gap: 8px; }
+
+/* collapse control */
+.grp-toggle {
+  width: 26px; height: 26px; border-radius: var(--r-xs); cursor: pointer; flex: none;
+  display: grid; place-items: center; color: var(--text-3); margin-left: -4px;
+}
+.grp-toggle:hover { background: var(--surface-3); color: var(--text); }
+.grp-toggle svg { width: 14px; height: 14px; transform: rotate(90deg); transition: transform .18s var(--ease); }
+.group-head.shut .grp-toggle svg { transform: rotate(0deg); }
+.group-head.shut { border-bottom: 0; }
+
+/* two-line sidebar rows, so six qualifying groups are tellable apart */
+.lg-item .name { display: flex; flex-direction: column; line-height: 1.25; }
+.lg-item .name small { font-size: 11px; color: var(--text-3); font-weight: 500; }
+
+@media (max-width: 640px) {
+  .match { grid-template-columns: 58px minmax(0, 1fr) 54px minmax(0, 1fr); padding: 7px 10px; }
+  .tm { font-size: 13px; gap: 6px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
